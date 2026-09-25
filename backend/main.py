@@ -483,6 +483,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/debug-test")
+async def debug_test():
+    session = cffi_requests.AsyncSession(impersonate="chrome120")
+    device_code = generate_device_code()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Api-V2": "1",
+        "1-CIHAZ-KODU": device_code,
+        "Referer": "https://1000kitap.com/",
+        "Origin": "https://1000kitap.com",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site"
+    }
+    url = "https://api.1000kitap.com/v2/uyeler/kitaplar/liste"
+    params = {
+        "kadi": "test",
+        "raf": "okuduklari",
+        "sayfa": 1,
+        "appVersion": "2.60.60",
+        "os": "web",
+        "hl": "tr"
+    }
+    try:
+        resp = await session.get(url, params=params, headers=headers, timeout=10.0)
+        return {
+            "status_code": resp.status_code,
+            "headers": dict(resp.headers),
+            "body": resp.text[:500]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        await session.close()
+
 @app.post("/api/jobs")
 async def create_export_job(payload: ExportRequest):
     """Yeni aktarma görevi oluşturur ve FIFO kuyruğuna ekler."""
