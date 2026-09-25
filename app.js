@@ -4,6 +4,11 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Canlı Backend API URL'i (GitHub Pages üzerindeyken Render'a bağlanır, yereldeyken göreceli çalışır)
+  const API_BASE_URL = window.location.hostname.includes('github.io')
+    ? 'https://onek-to-goodreads.onrender.com'
+    : '';
+
   // ============================================================================
   // DOM ELEMENTLERİ
   // ============================================================================
@@ -127,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startBtn.innerHTML = '<span class="btn-text">KUYRUGA ALINIYOR...</span>';
 
     try {
-      const response = await fetch('/api/jobs', {
+      const response = await fetch(`${API_BASE_URL}/api/jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -183,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function startEventStream(jobId) {
     cleanupActiveStreams();
 
-    const eventUrl = `/api/jobs/${jobId}/events`;
+    const eventUrl = `${API_BASE_URL}/api/jobs/${jobId}/events`;
     activeEventSource = new EventSource(eventUrl);
 
     activeEventSource.onmessage = (event) => {
@@ -212,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activePollingInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}/status`);
+        const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/status`);
         if (!res.ok) {
           throw new Error('Görev durumu alınamadı.');
         }
@@ -286,7 +291,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const total = data.total || data.total_count || data.current || data.current_count || 0;
       finalCount.textContent = total;
 
-      const downloadUrl = data.download_url || `/api/jobs/${currentJobId}/download`;
+      let downloadUrl = data.download_url || `/api/jobs/${currentJobId}/download`;
+      if (downloadUrl.startsWith('/')) {
+        downloadUrl = `${API_BASE_URL}${downloadUrl}`;
+      }
       downloadBtn.href = downloadUrl;
 
       showSection(completedSection);
