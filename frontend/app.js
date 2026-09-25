@@ -271,12 +271,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 2. TARAMA VEYA ISBN ÇÖZÜMLEME DURUMU
-    if (data.status === 'scraping' || data.status === 'resolving_isbn' || data.status === 'resolving_isbn_1k' || data.type === 'progress') {
+    if (data.status === 'scraping' || data.status === 'resolving_isbn' || data.type === 'progress') {
       if (data.status === 'resolving_isbn') {
         statusBadgeText.textContent = 'ISBN COZULUYOR';
-        statusBadge.style.borderColor = 'var(--accent-terracotta)';
-      } else if (data.status === 'resolving_isbn_1k') {
-        statusBadgeText.textContent = '1000KITAP TAMAMLANIYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else {
         statusBadgeText.textContent = 'TARANIYOR';
@@ -287,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const total = data.total || data.total_count || 0;
       const percent = data.percent !== undefined ? data.percent : Math.min(99, Math.round((current / (total || 1)) * 100));
 
-      if (data.status === 'resolving_isbn' || data.status === 'resolving_isbn_1k' || (data.message && data.message.includes('ISBN'))) {
+      if (data.status === 'resolving_isbn' || (data.message && data.message.includes('ISBN'))) {
         queueInfoText.textContent = data.message || `ISBN numaraları doğrulanıyor: ${current} / ${total} (%${percent})...`;
       } else {
         queueInfoText.textContent = total > 0 
