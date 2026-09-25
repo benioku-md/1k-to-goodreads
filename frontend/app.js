@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentUsername = '';
   let currentShelf = 'okuduklari';
   let autoRetryCount = 0;
-  const MAX_AUTO_RETRIES = 2;
+  const MAX_AUTO_RETRIES = 3;
 
   async function startExportProcess(username, shelf) {
     currentUsername = username;
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (queueInfoText) queueInfoText.textContent = 'Bağlantı kuruluyor, lütfen bekleyin...';
         setTimeout(() => {
           startExportProcess(currentUsername, currentShelf);
-        }, 2000);
+        }, 1000);
       } else {
         showError(err.message || 'İş başlatılırken bir bağlantı hatası oluştu.');
       }
@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setTimeout(() => {
           startExportProcess(currentUsername, currentShelf);
-        }, 2500);
+        }, 1200);
         return;
       }
 

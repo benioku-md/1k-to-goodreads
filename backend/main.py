@@ -188,24 +188,26 @@ async def scrape_user_books(job: JobState):
                 params["kume"] = kume
 
             response = None
-            for retry in range(4):
+            for retry in range(2):
                 try:
-                    response = await session.get(url, params=params, headers=headers, timeout=25.0)
+                    response = await session.get(url, params=params, headers=headers, timeout=6.0)
                     if response.status_code in (403, 429):
-                        # Cloudflare geçici rate-limit / cookie engeli -> Taze oturum ve cihaz koduyla kurtarma
-                        await asyncio.sleep(2.0 * (retry + 1))
-                        try:
-                            await session.close()
-                        except Exception:
-                            pass
-                        session = cffi_requests.AsyncSession(impersonate="chrome120")
-                        headers["1-CIHAZ-KODU"] = generate_device_code()
-                        continue
+                        if retry == 0:
+                            # Hızlı tek deneme: 1 saniye bekleyip taze oturumla dene
+                            await asyncio.sleep(1.0)
+                            try:
+                                await session.close()
+                            except Exception:
+                                pass
+                            session = cffi_requests.AsyncSession(impersonate="chrome120")
+                            headers["1-CIHAZ-KODU"] = generate_device_code()
+                            continue
+                        break
                     break
                 except Exception as net_err:
-                    if retry == 3:
+                    if retry == 1:
                         raise net_err
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(0.5)
 
             if response is None or response.status_code != 200:
                 code = response.status_code if response else "Bilinmiyor"
