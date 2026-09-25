@@ -354,23 +354,10 @@ async def scrape_user_books(job: JobState):
             )
 
         # ======================================================================
-        # 4.2. GOOGLE BOOKS API İLE HIZLI & ASENKRON ISBN ÇÖZÜMLEME
+        # 4.2. KADEMELİ ISBN ÇÖZÜMLEME MİMARİSİ (GOOGLE KATI -> GEVŞEK -> KİTAPYURDU)
         # ======================================================================
         google_api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
         total_books = len(collected_books)
-
-        job.status = "resolving_isbn"
-        await job.broadcast({
-            "type": "status",
-            "status": "resolving_isbn",
-            "message": "Kitapların ISBN numaraları Google Books üzerinden taranıyor...",
-            "current": 0,
-            "total": total_books,
-            "percent": 0
-        })
-
-        sem = asyncio.Semaphore(5)
-        resolved_count = 0
 
         def extract_isbn_from_items(items: list) -> str:
             if not items:
@@ -409,50 +396,183 @@ async def scrape_user_books(job: JobState):
                     await asyncio.sleep(0.5)
             return []
 
-        async def resolve_isbn_task(book: dict):
-            nonlocal resolved_count
+        # ----------------------------------------------------------------------
+        # 1. AŞAMA: GOOGLE BOOKS KATI MOD (intitle + inauthor)
+        # ----------------------------------------------------------------------
+        job.status = "resolving_isbn_strict"
+        await job.broadcast({
+            "type": "status",
+            "status": "resolving_isbn_strict",
+            "message": f"ISBN taranıyor (Katı mod): 0 / {total_books}...",
+            "current": 0,
+            "total": total_books,
+            "percent": 0
+        })
+
+        sem_google = asyncio.Semaphore(5)
+        count_strict = 0
+
+        async def task_strict(book: dict):
+            nonlocal count_strict
             title = book["title"]
             author = book["author"]
             found_isbn = ""
-
             if title:
                 clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()
                 clean_a = re.sub(r'[\(\[\{].*?[\)\]\}]', '', author).strip()
-
-                async with sem:
-                    # 1. Tur: Katı Başlık ve Yazar Araması
-                    strict_query = f"intitle:{clean_t}"
-                    if clean_a:
-                        strict_query += f"+inauthor:{clean_a}"
-                    items1 = await fetch_google_volume(strict_query)
-                    found_isbn = extract_isbn_from_items(items1)
-
-                    # 2. Tur: Bulunamadıysa Serbest Arama (q=KitapAdı YazarAdı)
-                    if not found_isbn:
-                        free_query = f"{clean_t} {clean_a}".strip()
-                        items2 = await fetch_google_volume(free_query)
-                        found_isbn = extract_isbn_from_items(items2)
-
+                strict_query = f"intitle:{clean_t}"
+                if clean_a:
+                    strict_query += f"+inauthor:{clean_a}"
+                async with sem_google:
+                    items = await fetch_google_volume(strict_query)
+                    found_isbn = extract_isbn_from_items(items)
             book["isbn"] = found_isbn
-            resolved_count += 1
-            pct = int((resolved_count / total_books) * 100)
-
-            if resolved_count % 3 == 0 or resolved_count == total_books:
+            count_strict += 1
+            pct = int((count_strict / total_books) * 100)
+            if count_strict % 3 == 0 or count_strict == total_books:
                 await job.broadcast({
                     "type": "progress",
-                    "status": "resolving_isbn",
-                    "message": f"ISBN numaraları doğrulanıyor: {resolved_count} / {total_books} (%{pct})...",
-                    "current": resolved_count,
+                    "status": "resolving_isbn_strict",
+                    "message": f"ISBN taranıyor (Katı mod): {count_strict} / {total_books} (%{pct})...",
+                    "current": count_strict,
                     "total": total_books,
                     "percent": pct,
-                    "last_book": {
-                        "title": book["title"],
-                        "author": book["author"],
-                        "cover": book["cover"]
-                    }
+                    "last_book": {"title": book["title"], "author": book["author"], "cover": book["cover"]}
                 })
 
-        await asyncio.gather(*(resolve_isbn_task(b) for b in collected_books))
+        await asyncio.gather(*(task_strict(b) for b in collected_books))
+
+        # ----------------------------------------------------------------------
+        # 2. AŞAMA: GOOGLE BOOKS GEVŞEK MOD (q=Kitap Yazar - Bulunamayanlar)
+        # ----------------------------------------------------------------------
+        missing_after_strict = [b for b in collected_books if not b.get("isbn")]
+        if missing_after_strict:
+            total_loose = len(missing_after_strict)
+            job.status = "resolving_isbn_loose"
+            await job.broadcast({
+                "type": "status",
+                "status": "resolving_isbn_loose",
+                "message": f"ISBN taranıyor (Gevşek mod): 0 / {total_loose}...",
+                "current": 0,
+                "total": total_loose,
+                "percent": 0
+            })
+
+            count_loose = 0
+            async def task_loose(book: dict):
+                nonlocal count_loose
+                title = book["title"]
+                author = book["author"]
+                found_isbn = ""
+                if title:
+                    clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()
+                    clean_a = re.sub(r'[\(\[\{].*?[\)\]\}]', '', author).strip()
+                    free_query = f"{clean_t} {clean_a}".strip()
+                    async with sem_google:
+                        items = await fetch_google_volume(free_query)
+                        found_isbn = extract_isbn_from_items(items)
+                if found_isbn:
+                    book["isbn"] = found_isbn
+                count_loose += 1
+                pct = int((count_loose / total_loose) * 100)
+                if count_loose % 2 == 0 or count_loose == total_loose:
+                    await job.broadcast({
+                        "type": "progress",
+                        "status": "resolving_isbn_loose",
+                        "message": f"ISBN taranıyor (Gevşek mod): {count_loose} / {total_loose} (%{pct})...",
+                        "current": count_loose,
+                        "total": total_loose,
+                        "percent": pct,
+                        "last_book": {"title": book["title"], "author": book["author"], "cover": book["cover"]}
+                    })
+
+            await asyncio.gather(*(task_loose(b) for b in missing_after_strict))
+
+        # ----------------------------------------------------------------------
+        # 3. AŞAMA: KİTAPYURDU 15x PARALEL ASENKRON MOTORU (Hâlâ Bulunamayanlar)
+        # ----------------------------------------------------------------------
+        missing_after_loose = [b for b in collected_books if not b.get("isbn")]
+        if missing_after_loose:
+            total_ky = len(missing_after_loose)
+            job.status = "resolving_isbn_ky"
+            await job.broadcast({
+                "type": "status",
+                "status": "resolving_isbn_ky",
+                "message": f"Kalan {total_ky} kitap Kitapyurdu üzerinden taranıyor...",
+                "current": 0,
+                "total": total_ky,
+                "percent": 0
+            })
+
+            sem_ky = asyncio.Semaphore(15)
+            ky_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+            count_ky = 0
+
+            async def task_ky(book: dict):
+                nonlocal count_ky
+                raw_title = book.get("title", "")
+                found_isbn = ""
+                if raw_title:
+                    t_clean = re.sub(r'\s*\([^)]*\)', '', raw_title)
+                    if " - " in t_clean:
+                        t_clean = t_clean.split(" - ")[0]
+                    t_clean = t_clean.replace("`", "").replace("'", "").strip()
+
+                    if t_clean:
+                        search_url = f"https://www.kitapyurdu.com/index.php?route=product/list&filter_name={urllib.parse.quote(t_clean)}"
+                        async with sem_ky:
+                            for _ in range(2):
+                                try:
+                                    s_resp = await session.get(search_url, headers=ky_headers, timeout=5.0)
+                                    if s_resp.status_code == 200:
+                                        m_link = re.search(r'href="((?:https://www\.kitapyurdu\.com)?/kitap/[^/"]+/\d+\.html[^"]*)"', s_resp.text)
+                                        if m_link:
+                                            prod_url = m_link.group(1)
+                                            if not prod_url.startswith("http"):
+                                                prod_url = "https://www.kitapyurdu.com" + prod_url
+                                            p_resp = await session.get(prod_url, headers=ky_headers, timeout=5.0)
+                                            if p_resp.status_code == 200:
+                                                p_html = p_resp.text
+                                                m_isbn = re.search(r'"isbn":\s*"([0-9\-]+)"', p_html, re.IGNORECASE)
+                                                if m_isbn:
+                                                    val = re.sub(r'[^0-9Xx]', '', m_isbn.group(1)).upper().strip()
+                                                    if len(val) in (10, 13):
+                                                        found_isbn = val
+                                                if not found_isbn:
+                                                    m_raw978 = re.search(r'978[0-9\-]{10,14}', p_html)
+                                                    if m_raw978:
+                                                        val = re.sub(r'[^0-9Xx]', '', m_raw978.group(0)).upper().strip()
+                                                        if len(val) in (10, 13):
+                                                            found_isbn = val
+                                        break
+                                    elif s_resp.status_code == 429:
+                                        await asyncio.sleep(1.0)
+                                        continue
+                                    else:
+                                        break
+                                except Exception:
+                                    await asyncio.sleep(0.5)
+
+                if found_isbn:
+                    book["isbn"] = found_isbn
+
+                count_ky += 1
+                pct = int((count_ky / total_ky) * 100)
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "resolving_isbn_ky",
+                    "message": f"Kitapyurdu'ndan taranıyor: {count_ky} / {total_ky} (%{pct})...",
+                    "current": count_ky,
+                    "total": total_ky,
+                    "percent": pct,
+                    "last_book": {"title": book["title"], "author": book["author"], "cover": book["cover"]}
+                })
+
+            await asyncio.gather(*(task_ky(b) for b in missing_after_loose))
 
         # ======================================================================
         # 4.3. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA

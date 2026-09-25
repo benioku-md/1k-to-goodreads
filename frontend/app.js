@@ -271,9 +271,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 2. TARAMA VEYA ISBN ÇÖZÜMLEME DURUMU
-    if (data.status === 'scraping' || data.status === 'resolving_isbn' || data.type === 'progress') {
-      if (data.status === 'resolving_isbn') {
-        statusBadgeText.textContent = 'ISBN COZULUYOR';
+    const isIsbnResolving = data.status && (data.status.startsWith('resolving_isbn') || data.status === 'resolving_isbn');
+    if (data.status === 'scraping' || isIsbnResolving || data.type === 'progress') {
+      if (data.status === 'resolving_isbn_strict') {
+        statusBadgeText.textContent = 'ISBN (KATI MOD)';
+        statusBadge.style.borderColor = 'var(--accent-terracotta)';
+      } else if (data.status === 'resolving_isbn_loose') {
+        statusBadgeText.textContent = 'ISBN (GEVŞEK MOD)';
+        statusBadge.style.borderColor = 'var(--accent-terracotta)';
+      } else if (data.status === 'resolving_isbn_ky') {
+        statusBadgeText.textContent = 'KİTAPYURDU TARANIYOR';
+        statusBadge.style.borderColor = 'var(--accent-terracotta)';
+      } else if (isIsbnResolving) {
+        statusBadgeText.textContent = 'ISBN ÇÖZÜLÜYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else {
         statusBadgeText.textContent = 'TARANIYOR';
@@ -284,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const total = data.total || data.total_count || 0;
       const percent = data.percent !== undefined ? data.percent : Math.min(99, Math.round((current / (total || 1)) * 100));
 
-      if (data.status === 'resolving_isbn' || (data.message && data.message.includes('ISBN'))) {
+      if (isIsbnResolving || (data.message && (data.message.includes('ISBN') || data.message.includes('Kitapyurdu')))) {
         queueInfoText.textContent = data.message || `ISBN numaraları doğrulanıyor: ${current} / ${total} (%${percent})...`;
       } else {
         queueInfoText.textContent = total > 0 
