@@ -1,0 +1,1300 @@
+/* ==============================================================================
+   1000KİTAP TO GOODREADS AKTARICI - TASARIM & STİL SİSTEMİ
+   Konsept: Amazon Kindle E-Okuyucu Zarafeti + Cozy Pixel-Art (8-Bit Kitap Kurdu)
+   PC (Desktop Studio) & Mobil (Responsive Touch) Hibrit Mimarisi
+   ============================================================================== */
+
+:root {
+  /* Renk Paleti (Sıcak Kitap Kurdu) */
+  --bg-parchment: #F7F4EB;
+  --bg-parchment-deep: #ECE5D8;
+  --bg-parchment-light: #FAF8F2;
+  --ink-espresso: #2D231E;
+  --ink-muted: #5C4B41;
+  --ink-light: #8E7B70;
+  
+  --accent-terracotta: #C85A32;
+  --accent-terracotta-hover: #B04823;
+  --accent-terracotta-light: #FBECE7;
+  
+  --accent-sage: #4A7C59;
+  --accent-sage-dark: #386043;
+  --accent-sage-light: #EBF3ED;
+  
+  --kindle-bezel: #251E19;
+  --kindle-bezel-inner: #1C1713;
+  --kindle-text-mute: #A0938A;
+  
+  --pixel-border: 2px solid var(--ink-espresso);
+  --pixel-border-thick: 3px solid var(--ink-espresso);
+  --pixel-shadow: 3px 3px 0px var(--ink-espresso);
+  --pixel-shadow-sm: 2px 2px 0px var(--ink-espresso);
+  --pixel-shadow-pressed: 1px 1px 0px var(--ink-espresso);
+
+  /* Tipografi */
+  --font-serif: 'Literata', 'Merriweather', 'Lora', Georgia, serif;
+  --font-pixel: 'Silkscreen', monospace;
+  --font-vt: 'VT323', monospace;
+}
+
+/* ------------------------------------------------------------------------------
+   Temel Sıfırlama ve Gövde
+   ------------------------------------------------------------------------------ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  font-size: 16px;
+  background-color: var(--bg-parchment-deep);
+  color: var(--ink-espresso);
+  font-family: var(--font-serif);
+  line-height: 1.6;
+  overflow-x: hidden;
+  min-width: 320px;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--bg-parchment-deep);
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(45, 35, 30, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, #ECE5D8 0%, #F5EFE6 50%, #ECE5D8 100%);
+  background-size: 20px 20px, 100% 100%;
+  color: var(--ink-espresso);
+  padding: 0;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Üst Piksel Dekoratif Şerit */
+.pixel-top-border {
+  width: 100%;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ink-espresso) 0px,
+    var(--ink-espresso) 10px,
+    var(--accent-terracotta) 10px,
+    var(--accent-terracotta) 20px,
+    var(--accent-sage) 20px,
+    var(--accent-sage) 30px
+  );
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* ------------------------------------------------------------------------------
+   Sayfa Kapsayıcısı (PC / Desktop ve Mobil Uyumu)
+   ------------------------------------------------------------------------------ */
+.page-wrapper {
+  width: 100%;
+  max-width: 100%; /* Masaüstünde daralma yok, tüm ekranı kaplar */
+  margin: 0 auto;
+  padding: 20px clamp(40px, 3.5vw, 50px) 40px clamp(40px, 3.5vw, 50px); /* Sağdan ve soldan en az 40px, en fazla 50px boşluk */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ------------------------------------------------------------------------------
+   Kindle / E-Okuyucu Cihaz Gövdesi (Bezel)
+   ------------------------------------------------------------------------------ */
+.kindle-device {
+  width: 100%;
+  background: var(--kindle-bezel);
+  border-radius: 20px;
+  border: var(--pixel-border-thick);
+  box-shadow: 
+    0 16px 40px rgba(45, 35, 30, 0.28),
+    6px 8px 0px rgba(45, 35, 30, 0.95);
+  padding: 20px 18px 26px 18px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Kindle Durum Çubuğu */
+.kindle-status-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 6px 12px 14px 12px;
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+  color: var(--kindle-text-mute);
+  border-bottom: 1px dashed rgba(247, 244, 235, 0.18);
+  margin-bottom: 16px;
+  user-select: none;
+}
+
+.status-left, .status-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pixel-badge {
+  background: var(--kindle-bezel-inner);
+  color: #DDD2C7;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.68rem;
+  letter-spacing: 0.5px;
+}
+
+.status-divider {
+  color: var(--ink-light);
+  opacity: 0.6;
+}
+
+.status-mode {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.82rem;
+  color: #DDD2C7;
+}
+
+.status-device-type {
+  font-size: 0.7rem;
+  color: #B5A69B;
+  letter-spacing: 0.5px;
+}
+
+.status-time {
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+  color: #DDD2C7;
+}
+
+/* E-Ink Piksel Pil Simgesi */
+.battery-icon {
+  display: inline-flex;
+  align-items: center;
+  width: 22px;
+  height: 11px;
+  border: 1px solid #DDD2C7;
+  padding: 1px;
+  position: relative;
+  border-radius: 1px;
+}
+
+.battery-icon::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: 2px;
+  width: 3px;
+  height: 5px;
+  background: #DDD2C7;
+}
+
+.battery-level {
+  width: 85%;
+  height: 100%;
+  background: #DDD2C7;
+}
+
+/* ------------------------------------------------------------------------------
+   Kindle Kağıt Ekranı (Parchment Paper Screen)
+   ------------------------------------------------------------------------------ */
+.kindle-screen {
+  background-color: var(--bg-parchment);
+  border-radius: 10px;
+  border: var(--pixel-border);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.12);
+  padding: 32px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: relative;
+}
+
+/* ------------------------------------------------------------------------------
+   Hero Header & Pixel Art
+   ------------------------------------------------------------------------------ */
+.hero-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px dashed rgba(45, 35, 30, 0.18);
+  padding-bottom: 24px;
+}
+
+.pixel-art-container {
+  width: 76px;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-parchment-light);
+  border: var(--pixel-border);
+  box-shadow: var(--pixel-shadow-sm);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.pixel-art-svg {
+  display: block;
+}
+
+/* Fincan Buharı Animasyonu */
+@keyframes steamFloat {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 0.3;
+  }
+}
+
+.steam-1 { animation: steamFloat 2.2s infinite ease-in-out; }
+.steam-2 { animation: steamFloat 2.8s infinite ease-in-out 0.4s; }
+.steam-3 { animation: steamFloat 2.5s infinite ease-in-out 0.8s; }
+
+.main-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.2;
+}
+
+.pixel-prefix {
+  font-family: var(--font-pixel);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  color: var(--accent-terracotta);
+  text-transform: uppercase;
+}
+
+.title-sub {
+  font-family: var(--font-serif);
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: var(--ink-espresso);
+  letter-spacing: -0.5px;
+}
+
+.hero-desc {
+  font-size: 1.05rem;
+  color: var(--ink-muted);
+  max-width: 680px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.hero-desc strong {
+  color: var(--ink-espresso);
+  font-weight: 700;
+}
+
+/* ==============================================================================
+   AKTARRIM & REHBER YERLEŞİM DÜZENİ
+   980px altı: Mobil tek sütun
+   980px üstü: Ortalanmış Aktarım Paneli + Sağa/Sola Paylaştırılmış Rehber
+   ============================================================================== */
+
+/* Varsayılan / Mobil Yerleşim */
+.centered-export-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bottom-split-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.side-info-stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Tablet & PC Yerleşimi (980px'den büyük ekranlar) */
+@media (min-width: 981px) {
+  .centered-export-zone {
+    max-width: 760px; /* Ortalanmış ergonomik panel */
+    margin: 0 auto 32px auto;
+  }
+
+  .bottom-split-zone {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Sağa ve sola eşit paylaştırılmış */
+    gap: 32px;
+    align-items: stretch;
+    border-top: 2px dashed rgba(45, 35, 30, 0.15);
+    padding-top: 28px;
+  }
+
+  .guide-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .side-info-stack {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
+  }
+}
+
+/* ------------------------------------------------------------------------------
+   Retro Kartlar (Ortak Yapı)
+   ------------------------------------------------------------------------------ */
+.retro-card {
+  background: var(--bg-parchment-light);
+  border: var(--pixel-border);
+  box-shadow: var(--pixel-shadow);
+  border-radius: 6px;
+  padding: 22px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.card-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-espresso);
+  background: var(--bg-parchment-deep);
+  border: var(--pixel-border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.badge-title {
+  letter-spacing: 0.5px;
+}
+
+/* ------------------------------------------------------------------------------
+   Form Elemanları
+   ------------------------------------------------------------------------------ */
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-label {
+  font-family: var(--font-pixel);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink-espresso);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: stretch;
+  background: #FFF;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.input-prefix {
+  font-family: var(--font-pixel);
+  font-size: 0.8rem;
+  background: var(--bg-parchment-deep);
+  color: var(--ink-muted);
+  padding: 12px 14px;
+  border-right: var(--pixel-border);
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+/* PC ve Tablette 1000kitap.com/ tam adresi görünür */
+.prefix-full {
+  display: inline;
+}
+
+.prefix-short {
+  display: none;
+}
+
+.retro-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 12px 16px;
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  color: var(--ink-espresso);
+  outline: none;
+}
+
+.retro-input::placeholder {
+  color: var(--ink-light);
+  font-style: italic;
+  font-size: 0.98rem;
+}
+
+.retro-input:focus {
+  background: #FFFFF9;
+}
+
+.input-hint {
+  font-size: 0.82rem;
+  color: var(--ink-light);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* Buton Stilleri */
+.form-actions {
+  margin-top: 6px;
+}
+
+.retro-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--font-pixel);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 12px 20px;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  width: 100%;
+  min-height: 48px;
+  text-align: center;
+}
+
+.retro-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--pixel-shadow-pressed) !important;
+}
+
+.btn-primary {
+  background: var(--accent-terracotta);
+  color: #FFF;
+  box-shadow: var(--pixel-shadow);
+}
+
+.retro-btn.btn-primary:hover {
+  background: var(--accent-terracotta-hover);
+}
+
+.btn-arrow {
+  font-size: 1.1rem;
+}
+
+.btn-success {
+  background: var(--accent-sage);
+  color: #FFF;
+  box-shadow: var(--pixel-shadow);
+  font-size: 0.92rem;
+}
+
+.btn-success:hover {
+  background: var(--accent-sage-dark);
+}
+
+.btn-secondary {
+  background: var(--bg-parchment-deep);
+  color: var(--ink-espresso);
+  box-shadow: var(--pixel-shadow-sm);
+  font-size: 0.85rem;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-parchment);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--accent-terracotta);
+  border: var(--pixel-border);
+  box-shadow: var(--pixel-shadow-sm);
+  font-size: 0.84rem;
+}
+
+.btn-outline:hover {
+  background: var(--accent-terracotta-light);
+}
+
+/* Form Altı Mini Bilgi Rozetleri */
+.form-footer-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(45, 35, 30, 0.15);
+}
+
+.tip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.tip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-sage-light);
+  color: var(--accent-sage);
+  border: 1px solid var(--accent-sage);
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------------------
+   İlerleme & Kuyruk Alanı (Progress Card)
+   ------------------------------------------------------------------------------ */
+.progress-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-parchment-deep);
+  border: var(--pixel-border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: var(--font-pixel);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-terracotta);
+  border-radius: 50%;
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}
+
+.queue-info-text {
+  font-family: var(--font-vt);
+  font-size: 1.4rem;
+  color: var(--ink-espresso);
+  letter-spacing: 0.5px;
+}
+
+/* Retro Piksel İlerleme Çubuğu */
+.pixel-progress-bar-container {
+  width: 100%;
+  height: 28px;
+  background: #FFF;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  padding: 3px;
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.pixel-progress-bar {
+  height: 100%;
+  background: var(--accent-sage);
+  border-radius: 2px;
+  transition: width 0.3s linear;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.25) 0px,
+    rgba(255, 255, 255, 0.25) 10px,
+    transparent 10px,
+    transparent 20px
+  );
+  animation: patternSlide 1.5s linear infinite;
+}
+
+@keyframes patternSlide {
+  0% { background-position: 0 0; }
+  100% { background-position: 28px 0; }
+}
+
+/* İstatistik Kutuları */
+.progress-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.stat-box {
+  background: #FFF;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-label {
+  font-family: var(--font-pixel);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-family: var(--font-vt);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--ink-espresso);
+  line-height: 1.2;
+}
+
+/* Canlı Taranan Kitap Önizlemesi */
+.live-book-preview {
+  background: var(--bg-parchment-deep);
+  border: 1px dashed var(--ink-light);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-label {
+  font-family: var(--font-pixel);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent-terracotta);
+}
+
+.preview-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cover-wrapper {
+  width: 42px;
+  height: 60px;
+  border: var(--pixel-border);
+  background: #FFF;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.book-cover-placeholder {
+  font-size: 1.3rem;
+}
+
+.book-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.book-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.book-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink-espresso);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-author {
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rate-limit-note {
+  font-size: 0.8rem;
+  color: var(--ink-light);
+  font-style: italic;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------------------
+   Başarı Kartı (Completed Card)
+   ------------------------------------------------------------------------------ */
+.completed-card {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pixel-stamp {
+  display: inline-block;
+  font-family: var(--font-pixel);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--accent-sage);
+  border: 2px dashed var(--accent-sage);
+  padding: 4px 14px;
+  border-radius: 4px;
+  transform: rotate(-2deg);
+  margin-bottom: 8px;
+}
+
+.success-title {
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--ink-espresso);
+}
+
+.success-desc {
+  font-size: 1rem;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+.download-action-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-hint {
+  font-size: 0.82rem;
+  color: var(--ink-light);
+  font-style: italic;
+}
+
+.restart-box {
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------------------
+   Hata Kartı (Error Card)
+   ------------------------------------------------------------------------------ */
+.error-card {
+  border-color: #A33B32;
+  background: #FFF7F6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #A33B32;
+}
+
+.error-title {
+  font-family: var(--font-pixel);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.error-text {
+  font-size: 0.95rem;
+  color: var(--ink-espresso);
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------------------
+   Sağ Sütun: Rehber, Puan Dönüşümü & Gizlilik
+   ------------------------------------------------------------------------------ */
+.guide-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #FFF;
+  border: 1px solid rgba(45, 35, 30, 0.15);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.step-num {
+  font-family: var(--font-vt);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent-terracotta);
+  line-height: 1;
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: center;
+  padding-top: 2px;
+}
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+}
+
+.step-content strong {
+  color: var(--ink-espresso);
+}
+
+.step-content mark {
+  background: var(--accent-terracotta-light);
+  color: var(--accent-terracotta);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.guide-cta {
+  margin-top: 6px;
+}
+
+/* Puan Eşleme Matrisi */
+.rating-info-desc {
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.rating-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rating-pill {
+  font-family: var(--font-pixel);
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: #FFF;
+  border: 1px solid rgba(45, 35, 30, 0.18);
+  border-radius: 4px;
+  padding: 6px 12px;
+  color: var(--ink-espresso);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.rating-range {
+  display: inline-block;
+  min-width: 42px;
+  color: var(--ink-espresso);
+  font-weight: 700;
+  font-size: 0.77rem; /* +1.5px dengelendi */
+}
+
+.rating-arrow {
+  color: var(--accent-terracotta);
+  font-size: 0.85em;
+}
+
+.rating-stars {
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 2px;
+  font-family: initial;
+}
+
+.rating-score {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: 0.9em;
+}
+
+/* Gizlilik Listesi */
+.privacy-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.privacy-list li {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  position: relative;
+  padding-left: 18px;
+  line-height: 1.45;
+}
+
+.privacy-list li::before {
+  content: '▪';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--accent-sage);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.privacy-list strong {
+  color: var(--ink-espresso);
+}
+
+/* ------------------------------------------------------------------------------
+   Cihaz Alt Bezel & İmza (benioku_md yaptı)
+   ------------------------------------------------------------------------------ */
+.kindle-bezel-bottom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 20px;
+  padding-bottom: 2px;
+  user-select: none;
+}
+
+.creator-brand {
+  font-family: var(--font-pixel);
+  font-size: 0.88rem;
+  letter-spacing: 1.5px;
+  color: #7A6C62;
+  text-transform: lowercase;
+  opacity: 0.85;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.creator-brand:hover {
+  color: #DDD2C7;
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------------------
+   Yardımcı Sınıflar (Utilities)
+   ------------------------------------------------------------------------------ */
+.hidden {
+  display: none !important;
+}
+
+/* ==============================================================================
+   RESPONSIVE & MOBİL UYUMLULUK SİSTEMİ (320px - 900px ARASI)
+   ============================================================================== */
+
+/* Tablet & Küçük Ekranlar (980px altı - Mobilde olduğu gibi dikey akış) */
+@media (max-width: 980px) {
+  .page-wrapper {
+    max-width: 760px;
+    padding: 16px 12px 32px 12px;
+  }
+
+  .centered-export-zone {
+    max-width: 100%;
+    margin-bottom: 20px;
+  }
+
+  /* 980px altında (mobil görünümde) 1k.com/ kısa adresi görünür */
+  .prefix-full {
+    display: none !important;
+  }
+
+  .prefix-short {
+    display: inline !important;
+  }
+
+  .bottom-split-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .kindle-screen {
+    padding: 24px 18px;
+    gap: 20px;
+  }
+
+  .title-sub {
+    font-size: 1.75rem;
+  }
+}
+
+/* ==============================================================================
+   FONT AWESOME TEMA UYUMLU İKON STİLLERİ
+   ============================================================================== */
+.theme-icon {
+  color: var(--accent-terracotta);
+  font-size: 0.95em;
+  vertical-align: -1px;
+}
+
+.card-header-badge .theme-icon {
+  color: var(--accent-terracotta);
+  font-size: 0.9em;
+}
+
+.tip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--accent-sage-light);
+  color: var(--accent-sage);
+  border: 1px solid var(--accent-sage);
+  border-radius: 50%;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.rate-limit-note .theme-icon {
+  color: var(--ink-light);
+  font-size: 0.85em;
+}
+
+.error-icon {
+  color: #A33B32;
+  font-size: 1.15rem;
+}
+
+.book-placeholder-icon {
+  font-size: 1.35rem;
+  color: var(--ink-light);
+}
+
+/* Akıllı Telefonlar (480px altı) */
+@media (max-width: 480px) {
+  .page-wrapper {
+    padding: 8px 4px 20px 4px;
+  }
+
+  .kindle-device {
+    border-radius: 12px;
+    padding: 12px 6px 14px 6px;
+    box-shadow: 
+      0 6px 18px rgba(45, 35, 30, 0.2),
+      2px 3px 0px rgba(45, 35, 30, 0.9);
+  }
+
+  .kindle-status-bar {
+    font-size: 0.65rem;
+    padding: 2px 2px 8px 2px;
+    gap: 4px;
+  }
+
+  .status-mode, .status-device-type {
+    display: none; /* En dar ekranda saat ve cihaz modeli yeterli */
+  }
+
+  .kindle-screen {
+    padding: 16px 10px;
+    gap: 16px;
+    border-radius: 6px;
+  }
+
+  .pixel-prefix {
+    font-size: 0.80rem;
+  }
+
+  .title-sub {
+    font-size: 1.35rem;
+  }
+
+  .hero-desc {
+    font-size: 0.88rem;
+  }
+
+  .retro-card {
+    padding: 14px 10px;
+  }
+
+  .input-wrapper {
+    flex-direction: column;
+  }
+
+  .input-prefix {
+    border-right: none;
+    border-bottom: var(--pixel-border);
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
+
+  /* Mobilde kısa adres görünür */
+  .prefix-full {
+    display: none;
+  }
+
+  .prefix-short {
+    display: inline;
+  }
+
+  .retro-input {
+    padding: 8px 10px;
+    font-size: 0.98rem;
+  }
+
+  .retro-btn {
+    font-size: 0.78rem;
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+
+  .progress-stats {
+    gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 1.35rem;
+  }
+
+  .stat-label {
+    font-size: 0.62rem;
+  }
+
+  .progress-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .queue-info-text {
+    font-size: 1.1rem;
+  }
+
+  .step-item {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .step-num {
+    font-size: 1.2rem;
+  }
+
+  .step-content {
+    font-size: 0.82rem;
+  }
+}
+
+/* En Dar Ekranlar (320px - 360px: iPhone SE 1, Eski Android'ler) */
+@media (max-width: 360px) {
+  html {
+    font-size: 14px;
+  }
+
+  .page-wrapper {
+    padding: 4px 2px 16px 2px;
+  }
+
+  .kindle-device {
+    padding: 8px 4px 10px 4px;
+    border-width: 2px;
+  }
+
+  .kindle-screen {
+    padding: 12px 8px;
+    gap: 14px;
+  }
+
+  .title-sub {
+    font-size: 1.2rem;
+  }
+
+  .pixel-art-container {
+    width: 56px;
+    height: 56px;
+  }
+
+  .pixel-art-svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .stat-value {
+    font-size: 1.15rem;
+  }
+
+  .retro-btn {
+    font-size: 0.72rem;
+    padding: 8px 10px;
+  }
+}
