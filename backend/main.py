@@ -196,12 +196,30 @@ async def scrape_user_books(job: JobState):
             if kume:
                 params["kume"] = kume
 
-            response = await session.get(url, params=params, headers=headers, timeout=25.0)
+            response = None
+            for retry in range(3):
+                try:
+                    response = await session.get(url, params=params, headers=headers, timeout=25.0)
+                    if response.status_code in (403, 429):
+                        # 1000Kitap Cloudflare geçici rate-limit engeli -> Taze cihaz kodu ve kısa bekleme ile kurtarma
+                        await asyncio.sleep(1.2 * (retry + 1))
+                        headers["1-CIHAZ-KODU"] = generate_device_code()
+                        try:
+                            await session.get("https://1000kitap.com/", timeout=5.0)
+                        except Exception:
+                            pass
+                        continue
+                    break
+                except Exception as net_err:
+                    if retry == 2:
+                        raise net_err
+                    await asyncio.sleep(1.0)
 
-            if response.status_code == 404:
-                raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
-            if response.status_code != 200:
-                raise Exception(f"1000Kitap API bağlantı hatası (HTTP {response.status_code})")
+            if response is None or response.status_code != 200:
+                code = response.status_code if response else "Bilinmiyor"
+                if code == 404:
+                    raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+                raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
             data = response.json()
 
@@ -337,8 +355,8 @@ async def scrape_user_books(job: JobState):
                 break
 
             # Hız sınırı (Max 2 istek/saniye)
-            # Güvenlik toleransı için 550ms bekliyoruz.
-            await asyncio.sleep(0.55)
+            # Cloudflare ve 1000Kitap güvenlik toleransı için 700ms bekliyoruz.
+            await asyncio.sleep(0.70)
 
         if not all_books_rows:
             if total_estimated > 0:
