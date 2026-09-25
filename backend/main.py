@@ -419,11 +419,13 @@ async def queue_worker():
                 waiting_job = JOBS.get(q_id)
                 if waiting_job and waiting_job.status == "queued":
                     waiting_job.queue_position = idx + 1
+                    wait_count = waiting_job.queue_position - 1
+                    msg = f"Sıradasınız (Önünüzde {wait_count} kişi var)..." if wait_count > 0 else "Sıradaki işlem sizin, aktarım başlıyor..."
                     await waiting_job.broadcast({
                         "type": "queued",
                         "status": "queued",
                         "position": waiting_job.queue_position,
-                        "message": "Sıradasınız, önceki işlem tamamlanınca aktarımınız başlayacak..."
+                        "message": msg
                     })
 
             job.status = "scraping"

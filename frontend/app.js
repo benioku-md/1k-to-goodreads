@@ -170,8 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
     statusBadgeText.textContent = 'KUYRUGA ALINDI';
     statusBadge.style.borderColor = 'var(--ink-espresso)';
     queueInfoText.textContent = jobData.queue_position > 1 
-      ? 'Sıradasınız, önceki işlem tamamlanınca aktarımınız başlayacak...' 
-      : 'İşleminiz hazırlanıyor, aktarım başlıyor...';
+      ? `Sıradasınız (Önünüzde ${jobData.queue_position - 1} kişi var)...` 
+      : 'Sıradaki işlem sizin, aktarım başlıyor...';
 
     progressBar.style.width = '3%';
     progressBar.setAttribute('aria-valuenow', '3');
@@ -241,9 +241,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.status === 'queued') {
       statusBadgeText.textContent = 'SIRADA';
       const pos = data.position || data.queue_position || 1;
-      queueInfoText.textContent = pos > 1 
-        ? 'Sıradasınız, önceki işlem tamamlanınca aktarımınız başlayacak...' 
-        : 'İşleminiz hazırlanıyor, aktarım başlıyor...';
+      const waitCount = pos - 1;
+      queueInfoText.textContent = waitCount > 0 
+        ? `Sıradasınız (Önünüzde ${waitCount} kişi var)...` 
+        : 'Sıradaki işlem sizin, aktarım başlıyor...';
       return;
     }
 
