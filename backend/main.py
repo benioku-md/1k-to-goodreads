@@ -15,6 +15,7 @@ import urllib.parse
 from typing import Dict, List, Optional
 from datetime import datetime
 
+import httpx
 from curl_cffi import requests as cffi_requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -149,12 +150,81 @@ def parse_rating(ek_bilgi: str) -> int:
     return 0
 
 # ==============================================================================
-# 4. 1000kitap scraper ve CSV üretimi
+# 4. KITAPYURDU ISBN ÇÖZÜMLEME VE 1000KITAP SCRAPER
 # ==============================================================================
+def normalize_tr_text(text: str) -> str:
+    if not text:
+        return ''
+    text = text.lower()
+    for tr, en in [('ı', 'i'), ('ğ', 'g'), ('ü', 'u'), ('ş', 's'), ('ö', 'o'), ('ç', 'c')]:
+        text = text.replace(tr, en)
+    return re.sub(r'[^a-z0-9\s]', ' ', text).strip()
+
+def pick_best_ky_url(target_title: str, html: str) -> str:
+    matches = re.findall(r'<a[^>]+href="([^"]+/kitap/[^/"]+/\d+\.html[^"]*)"[^>]*>(.*?)</a>', html, re.DOTALL)
+    norm_b = normalize_tr_text(target_title)
+    words_b = set(norm_b.split())
+    best_score = -1
+    best_url = ''
+    for href, inner in matches:
+        alt_m = re.search(r'alt=["\']([^"\']+)["\']', inner)
+        clean_text = alt_m.group(1).strip() if alt_m else ''
+        if not clean_text:
+            clean_text = re.sub(r'<[^>]+>', '', inner).strip()
+        if not clean_text or clean_text.lower() in ('ürünü incele', 'satın al', 'incele', 'detay'):
+            slug = href.split('/kitap/')[1].split('/')[0].replace('-', ' ')
+            clean_text = slug
+
+        norm_c = normalize_tr_text(clean_text)
+        if norm_b == norm_c:
+            score = 100
+        elif norm_b in norm_c:
+            score = 90
+        elif norm_c in norm_b:
+            score = 80
+        else:
+            cand_words = set(norm_c.split())
+            overlap = words_b.intersection(cand_words)
+            score = int((len(overlap) / len(words_b)) * 70) if words_b else 0
+
+        slug = href.split('/kitap/')[1].split('/')[0].replace('-', ' ')
+        slug_words = set(slug.split())
+        if words_b.intersection(slug_words):
+            score += 15
+
+        if score > best_score:
+            best_score = score
+            best_url = href
+    if best_score >= 35:
+        return best_url
+    return ''
+
+def extract_isbn(html: str) -> str:
+    # 1. JSON-LD schema: "isbn":"978..."
+    m = re.search(r'["\']isbn["\']\s*:\s*["\']([0-9Xx\-]{10,17})["\']', html, re.IGNORECASE)
+    if not m:
+        # 2. Modern Kitapyurdu attribute value
+        m = re.search(r'ky-pd-attributes__value">\s*([0-9Xx\-]{10,17})\s*<', html)
+    if not m:
+        m = re.search(r'itemprop=["\']isbn["\'][^>]*>([^<]+)<', html)
+    if not m:
+        m = re.search(r'ISBN[:\s]*</strong>\s*([0-9Xx\-]{10,17})', html, re.IGNORECASE)
+    if not m:
+        m = re.search(r'<th>\s*ISBN\s*</th>\s*<td>\s*([0-9Xx\-]{10,17})', html, re.IGNORECASE)
+    if not m:
+        m = re.search(r'data-isbn=["\']([0-9Xx\-]{10,17})["\']', html, re.IGNORECASE)
+    if m:
+        raw_isbn = m.group(1).replace("-", "").strip()
+        if len(raw_isbn) in (10, 13):
+            return raw_isbn
+    return ''
+
 async def scrape_user_books(job: JobState):
     """
     1000Kitap API'sini saniyede maksimum 2 istek hız sınırlamasıyla tarar,
     kitapları ayrıştırır ve UTF-8 BOM'lu Goodreads CSV'si üretir.
+    Eşzamanlı boru hattı (Producer-Consumer): Kitaplar çekilir çekilmez 
+    Kitapyurdu işçilerine aktarılarak eşzamanlı olarak ISBN'leri çözümlenir.
     """
     device_code = generate_device_code()
     headers = {
@@ -169,339 +239,256 @@ async def scrape_user_books(job: JobState):
     page = 1
     kume = ""
     has_more = True
-    collected_books: List[dict] = []
     total_estimated = 0
-
-    session = cffi_requests.AsyncSession(impersonate="chrome120")
+    collected_books: List[dict] = []
+    session = None
 
     try:
-        while has_more:
-            params = {
-                "kadi": job.username,
-                "raf": job.shelf,
-                "sayfa": page,
-                "appVersion": "2.60.60",
-                "os": "android",
-                "hl": "tr"
-            }
-            if kume:
-                params["kume"] = kume
+        session = cffi_requests.AsyncSession(impersonate="chrome120")
+        isbn_queue: asyncio.Queue = asyncio.Queue()
+        resolved_count = 0
+        total_books = 0
 
-            response = None
-            for retry in range(2):
-                try:
-                    response = await session.get(url, params=params, headers=headers, timeout=6.0)
-                    if response.status_code in (403, 429):
-                        if retry == 0:
-                            # Hızlı tek deneme: 1 saniye bekleyip taze oturumla dene
-                            await asyncio.sleep(1.0)
-                            try:
-                                await session.close()
-                            except Exception:
-                                pass
-                            session = cffi_requests.AsyncSession(impersonate="chrome120")
-                            headers["1-CIHAZ-KODU"] = generate_device_code()
-                            continue
-                        break
-                    break
-                except Exception as net_err:
-                    if retry == 1:
-                        raise net_err
-                    await asyncio.sleep(0.5)
-
-            if response is None or response.status_code != 200:
-                code = response.status_code if response else "Bilinmiyor"
-                if code == 404:
-                    raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
-                raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
-
-            data = response.json()
-
-            # 1000Kitap özel hata yanıtı (örn: Böyle bir okur bulunamadı)
-            if data.get("hata") == 1:
-                msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
-                raise Exception(f"1000Kitap Bildirimi: {msg}")
-
-            if "bilgi" in data and data["bilgi"] == 0:
-                msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
-                raise Exception(f"1000Kitap Bildirimi: {msg}")
-
-            sonuc = data.get("_sonuc")
-            if not sonuc:
-                raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
-
-            # 1000kitap raf gizliliği veya özel hata kontrolü
-            hata_metni = sonuc.get("hataMetni")
-            if hata_metni:
-                hata_lower = str(hata_metni).lower()
-                if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
-                    raise Exception(
-                        "Bu kullanıcının 'Okudukları' rafı gizlidir (Sadece okurun kendisi görebilir). "
-                        "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
-                        "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
-                    )
-                else:
-                    raise Exception(f"1000Kitap Bildirimi: {hata_metni}")
-
-            # İlk sayfada toplam kitap sayısını raflardan kestir
-            if page == 1:
-                kitaplik_bilgiler = sonuc.get("kitaplikBilgiler", {})
-                raflar = kitaplik_bilgiler.get("raflar", [])
-                for r in raflar:
-                    if r.get("seo") == job.shelf or r.get("baslik", "").lower() == "okudukları":
-                        bilgi_txt = r.get("bilgi", "")
-                        digits = re.findall(r'\d+', bilgi_txt.replace(".", "").replace(",", ""))
-                        if digits:
-                            total_estimated = int(digits[0])
-                        break
-                
-                # Şayet raflar altında bulunamadıysa, baslikMini'den de yakala
-                if total_estimated == 0 and sonuc.get("baslikMini"):
-                    digits = re.findall(r'\d+', str(sonuc.get("baslikMini")).replace(".", "").replace(",", ""))
-                    if digits:
-                        total_estimated = int(digits[0])
-
-                job.total_count = total_estimated
-
-            raw_list = sonuc.get("liste", [])
-            if not raw_list:
-                break
-
-            for item in raw_list:
-                # Reklam öğelerini filtrele
-                if item.get("renderTuru") == "reklam" or not item.get("adi"):
-                    continue
-
-                title = item.get("adi", "").strip()
-                author = item.get("yazarAdi") or item.get("ilkYazar") or ""
-                if not author and item.get("yazarlar"):
-                    author = item["yazarlar"][0].get("adi", "")
-
-                ek_bilgi = item.get("ekBilgi", "")
-                date_read = parse_date(ek_bilgi)
-                date_added = date_read if date_read else datetime.now().strftime("%Y/%m/%d")
-                user_rating = parse_rating(ek_bilgi)
-
-                avg_puan = item.get("puan")
-                avg_rating_str = ""
-                if avg_puan is not None:
-                    try:
-                        avg_rating_str = f"{(float(avg_puan) / 2.0):.2f}"
-                    except Exception:
-                        pass
-
-                read_count = 1
-                durum_btn = item.get("okumaDurumuButon") or {}
-                if isinstance(durum_btn, dict) and durum_btn.get("okumaSayisi", 0) > 1:
-                    read_count = durum_btn["okumaSayisi"]
-
-                book_entry = {
-                    "id": item.get("id"),
-                    "seo_adi": item.get("seo_adi") or "",
-                    "title": title,
-                    "author": author,
-                    "user_rating": user_rating,
-                    "date_read": date_read,
-                    "cover": item.get("resim") or item.get("resimB") or "",
-                    "isbn": ""
-                }
-                collected_books.append(book_entry)
-                job.current_count = len(collected_books)
-
-                # UI canlı bilgi güncellemesi
-                job.last_book = {
-                    "title": title,
-                    "author": author,
-                    "cover": book_entry["cover"]
-                }
-
-            # İlerleme yüzdesi
-            if job.total_count > 0:
-                pct = int((job.current_count / job.total_count) * 100)
-                job.percent = min(99, pct)
-            else:
-                job.percent = min(95, page * 10)
-
-            await job.broadcast({
-                "type": "progress",
-                "status": "scraping",
-                "current": job.current_count,
-                "total": job.total_count,
-                "percent": job.percent,
-                "last_book": job.last_book
-            })
-
-            has_more = bool(sonuc.get("hasMore", False))
-            kume = str(sonuc.get("kume", ""))
-            page += 1
-
-            if not has_more or not raw_list:
-                break
-
-            # Hız sınırı (Cloudflare ve 1000Kitap güvenlik toleransı için 900ms bekliyoruz)
-            await asyncio.sleep(0.90)
-
-        if not collected_books:
-            if total_estimated > 0:
-                raise Exception(
-                    f"Kullanıcının kütüphanesinde {total_estimated} kitap görünüyor ancak liste içeriği boş dönüyor. "
-                    "Rafınız gizli olabilir. Lütfen 1000Kitap Profil Ayarları ➔ Gizlilik menüsünden "
-                    "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
-                )
-            raise Exception(
-                "Bu kullanıcının 'okudukları' rafında taranacak kitap bulunamadı. "
-                "Rafınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
-            )
-
-        # ======================================================================
-        # 4.2. KİTAPYURDU AKILLI ASENKRON ISBN ÇÖZÜMLEME MOTORU
-        # ======================================================================
-        total_books = len(collected_books)
-        job.status = "resolving_isbn"
-        await job.broadcast({
-            "type": "status",
-            "status": "resolving_isbn",
-            "message": f"ISBN numaraları taranıyor: 0 / {total_books}...",
-            "current": 0,
-            "total": total_books,
-            "percent": 0
-        })
-
-        # Cloudflare bot filtresine takılmadan maksimum hız: 5 paralel ve 100ms güvenlik aralığı
-        sem_ky = asyncio.Semaphore(5)
         ky_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
         }
-        count_ky = 0
 
-        def normalize_tr_text(text: str) -> str:
-            if not text:
-                return ""
-            text = text.lower()
-            for tr, en in [('ı', 'i'), ('ğ', 'g'), ('ü', 'u'), ('ş', 's'), ('ö', 'o'), ('ç', 'c')]:
-                text = text.replace(tr, en)
-            return re.sub(r'[^a-z0-9\s]', ' ', text).strip()
+        async def ky_worker(client: httpx.AsyncClient):
+            nonlocal resolved_count
+            while True:
+                book = await isbn_queue.get()
+                if book is None:
+                    isbn_queue.task_done()
+                    break
 
-        def pick_best_ky_url(target_title: str, html: str) -> str:
-            matches = re.findall(r'<a[^>]+href=["\']([^"\']+/kitap/[^/"\']+/\d+\.html[^"\']*)["\'][^>]*>(.*?)</a>', html, re.DOTALL)
-            norm_b = normalize_tr_text(target_title)
-            words_b = set(norm_b.split())
-            best_score = -1
-            best_url = ""
-            for href, inner in matches:
-                clean_text = re.sub(r'<[^>]+>', '', inner).strip()
-                if not clean_text or clean_text.lower() in ('ürünü incele', 'satın al', 'incele', 'detay'):
-                    continue
-                norm_c = normalize_tr_text(clean_text)
-                if norm_b == norm_c:
-                    score = 100
-                elif norm_b in norm_c:
-                    score = 90
-                elif norm_c in norm_b:
-                    score = 80
-                else:
-                    cand_words = set(norm_c.split())
-                    overlap = words_b.intersection(cand_words)
-                    score = int((len(overlap) / len(words_b)) * 70) if words_b else 0
+                raw_title = book.get("title", "")
+                raw_author = book.get("author", "")
+                found_isbn = ""
+                if raw_title:
+                    clean_title = re.sub(r'[\-\:\&/].*$', '', re.sub(r'\s*\([^)]*\)', '', raw_title)).strip()
+                    author_last = raw_author.split()[-1] if raw_author else ''
 
-                slug = href.split('/kitap/')[1].split('/')[0].replace('-', ' ')
-                slug_words = set(slug.split())
-                if words_b.intersection(slug_words):
-                    score += 15
+                    queries = []
+                    if clean_title and raw_author:
+                        queries.append(f"{clean_title} {raw_author}".strip())
+                    if clean_title and author_last and author_last != raw_author:
+                        queries.append(f"{clean_title} {author_last}".strip())
+                    if raw_title and raw_title not in queries:
+                        queries.append(raw_title)
+                    if clean_title and clean_title not in queries:
+                        queries.append(clean_title)
 
-                if score > best_score:
-                    best_score = score
-                    best_url = href
-            if best_score >= 35:
-                return best_url
-            return ""
-
-        async def task_ky(book: dict):
-            nonlocal count_ky
-            raw_title = book.get("title", "")
-            raw_author = book.get("author", "")
-            found_isbn = ""
-            if raw_title:
-                clean_title = re.sub(r'[\-\:\&/].*$', '', re.sub(r'\s*\([^)]*\)', '', raw_title)).strip()
-                base_title = re.sub(r'\s+\d+$', '', clean_title).strip()
-
-                queries = [f"{raw_title} {raw_author}".strip()]
-                if clean_title and clean_title != raw_title:
-                    queries.append(f"{clean_title} {raw_author}".strip())
-                if base_title and base_title not in (raw_title, clean_title):
-                    queries.append(f"{base_title} {raw_author}".strip())
-                if clean_title:
-                    queries.append(clean_title)
-
-                async with sem_ky:
                     for q in queries:
-                        if found_isbn:
+                        try:
+                            encoded_q = urllib.parse.quote(q)
+                            search_url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={encoded_q}&fuzzy=0"
+                            resp = await client.get(search_url, headers=ky_headers)
+                            if resp.status_code == 200:
+                                html_text = resp.text
+                                isbn = extract_isbn(html_text)
+                                if isbn:
+                                    found_isbn = isbn
+                                    break
+
+                                best_prod_url = pick_best_ky_url(clean_title or raw_title, html_text)
+                                if best_prod_url:
+                                    prod_resp = await client.get(best_prod_url, headers=ky_headers)
+                                    if prod_resp.status_code == 200:
+                                        p_isbn = extract_isbn(prod_resp.text)
+                                        if p_isbn:
+                                            found_isbn = p_isbn
+                                            break
+                            await asyncio.sleep(0.10)
+                        except Exception:
+                            pass
+
+                if found_isbn:
+                    book["isbn"] = found_isbn
+
+                resolved_count += 1
+                isbn_queue.task_done()
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as ky_client:
+            ky_workers = [asyncio.create_task(ky_worker(ky_client)) for _ in range(5)]
+
+            while has_more:
+                params = {
+                    "kadi": job.username,
+                    "raf": job.shelf,
+                    "sayfa": page,
+                    "appVersion": "2.60.60",
+                    "os": "android",
+                    "hl": "tr"
+                }
+                if kume:
+                    params["kume"] = kume
+
+                response = None
+                for retry in range(2):
+                    try:
+                        response = await session.get(url, params=params, headers=headers, timeout=6.0)
+                        if response.status_code in (403, 429):
+                            if retry == 0:
+                                await asyncio.sleep(1.0)
+                                try:
+                                    await session.close()
+                                except Exception:
+                                    pass
+                                session = cffi_requests.AsyncSession(impersonate="chrome120")
+                                headers["1-CIHAZ-KODU"] = generate_device_code()
+                                continue
                             break
-                        search_url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={urllib.parse.quote(q)}"
-                        for _ in range(2):
-                            try:
-                                s_resp = await session.get(search_url, headers=ky_headers, timeout=6.0)
-                                if s_resp.status_code == 200:
-                                    best_link = pick_best_ky_url(clean_title or raw_title, s_resp.text)
-                                    if best_link:
-                                        prod_url = best_link.replace("&amp;", "&")
-                                        if not prod_url.startswith("http"):
-                                            prod_url = "https://www.kitapyurdu.com" + prod_url
-                                        p_resp = await session.get(prod_url, headers=ky_headers, timeout=6.0)
-                                        if p_resp.status_code == 200:
-                                            p_html = p_resp.text
-                                            # Yöntem A: JSON-LD Schema
-                                            m_isbn = re.search(r'"isbn":\s*"([0-9\-Xx]+)"', p_html, re.IGNORECASE)
-                                            if m_isbn:
-                                                val = re.sub(r'[^0-9Xx]', '', m_isbn.group(1)).upper().strip()
-                                                if len(val) in (10, 13):
-                                                    found_isbn = val
+                        break
+                    except Exception as net_err:
+                        if retry == 1:
+                            raise net_err
+                        await asyncio.sleep(0.5)
 
-                                            # Yöntem B: Ürün özellikleri tablosu (Tükenmiş kitaplar ve 975/ISBN-10 için)
-                                            if not found_isbn:
-                                                m_table = re.search(r'ISBN:.*?<span[^>]*class=["\'][^"\']*attributes__value[^"\']*["\'][^>]*>\s*([0-9\-Xx]+)\s*<', p_html, re.DOTALL | re.IGNORECASE)
-                                                if m_table:
-                                                    val = re.sub(r'[^0-9Xx]', '', m_table.group(1)).upper().strip()
-                                                    if len(val) in (10, 13):
-                                                        found_isbn = val
+                if response is None or response.status_code != 200:
+                    code = response.status_code if response else "Bilinmiyor"
+                    if code == 404:
+                        raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+                    raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
-                                            # Yöntem C: Sayfa içi regex (978, 979, 975)
-                                            if not found_isbn:
-                                                m_raw = re.search(r'(?:97[89][0-9\-]{10,14}|975[0-9\-]{7,11})', p_html)
-                                                if m_raw:
-                                                    val = re.sub(r'[^0-9Xx]', '', m_raw.group(0)).upper().strip()
-                                                    if len(val) in (10, 13):
-                                                        found_isbn = val
-                                    break
-                                elif s_resp.status_code == 429:
-                                    await asyncio.sleep(1.5)
-                                    continue
-                                else:
-                                    break
-                            except Exception:
-                                await asyncio.sleep(0.5)
+                data = response.json()
 
-                        # Cloudflare'ı tetiklememek için minik güvenlik payı
-                        await asyncio.sleep(0.10)
+                if data.get("hata") == 1:
+                    msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+                    raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-            if found_isbn:
-                book["isbn"] = found_isbn
+                if "bilgi" in data and data["bilgi"] == 0:
+                    msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
+                    raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-            count_ky += 1
-            pct = int((count_ky / total_books) * 100)
-            await job.broadcast({
-                "type": "progress",
-                "status": "resolving_isbn",
-                "message": f"ISBN numaraları taranıyor: {count_ky} / {total_books} (%{pct})...",
-                "current": count_ky,
-                "total": total_books,
-                "percent": pct,
-                "last_book": {"title": book["title"], "author": book["author"], "cover": book["cover"]}
-            })
+                sonuc = data.get("_sonuc")
+                if not sonuc:
+                    raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
 
-        await asyncio.gather(*(task_ky(b) for b in collected_books))
+                hata_metni = sonuc.get("hataMetni")
+                if hata_metni:
+                    hata_lower = str(hata_metni).lower()
+                    if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
+                        raise Exception(
+                            "Bu kullanıcının 'Okudukları' rafı gizlidir (Sadece okurun kendisi görebilir). "
+                            "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
+                            "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
+                        )
+                    else:
+                        raise Exception(f"1000Kitap Bildirimi: {hata_metni}")
+
+                if page == 1:
+                    kitaplik_bilgiler = sonuc.get("kitaplikBilgiler", {})
+                    raflar = kitaplik_bilgiler.get("raflar", [])
+                    for r in raflar:
+                        if r.get("seo") == job.shelf or r.get("baslik", "").lower() == "okudukları":
+                            bilgi_txt = r.get("bilgi", "")
+                            digits = re.findall(r"\d+", bilgi_txt.replace(".", "").replace(",", ""))
+                            if digits:
+                                total_estimated = int(digits[0])
+                            break
+                    if total_estimated == 0 and sonuc.get("baslikMini"):
+                        digits = re.findall(r"\d+", str(sonuc.get("baslikMini")).replace(".", "").replace(",", ""))
+                        if digits:
+                            total_estimated = int(digits[0])
+
+                    job.total_count = total_estimated
+
+                raw_list = sonuc.get("liste", [])
+                if not raw_list:
+                    break
+
+                for item in raw_list:
+                    if item.get("renderTuru") == "reklam" or not item.get("adi"):
+                        continue
+
+                    title = item.get("adi", "").strip()
+                    author = item.get("yazarAdi") or item.get("ilkYazar") or ""
+                    if not author and item.get("yazarlar"):
+                        author = item["yazarlar"][0].get("adi", "")
+
+                    ek_bilgi = item.get("ekBilgi", "")
+                    date_read = parse_date(ek_bilgi)
+                    user_rating = parse_rating(ek_bilgi)
+
+                    book_entry = {
+                        "id": item.get("id"),
+                        "seo_adi": item.get("seo_adi") or "",
+                        "title": title,
+                        "author": author,
+                        "user_rating": user_rating,
+                        "date_read": date_read,
+                        "cover": item.get("resim") or item.get("resimB") or "",
+                        "isbn": ""
+                    }
+                    collected_books.append(book_entry)
+                    job.current_count = len(collected_books)
+                    job.last_book = {
+                        "title": title,
+                        "author": author,
+                        "cover": book_entry["cover"]
+                    }
+
+                    # Eşzamanlı boru hattı: Kitabı bekletmeden anında Kitapyurdu işçi havuzuna fırlat
+                    await isbn_queue.put(book_entry)
+
+                if job.total_count > 0:
+                    pct = int((job.current_count / job.total_count) * 100)
+                    job.percent = min(99, pct)
+                else:
+                    job.percent = min(95, page * 10)
+
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "scraping",
+                    "current": job.current_count,
+                    "total": job.total_count,
+                    "percent": job.percent,
+                    "last_book": job.last_book
+                })
+
+                has_more = bool(sonuc.get("hasMore", False))
+                kume = str(sonuc.get("kume", ""))
+                page += 1
+
+                if not has_more or not raw_list:
+                    break
+
+                await asyncio.sleep(0.90)
+
+            if not collected_books:
+                if total_estimated > 0:
+                    raise Exception(
+                        f"Kullanıcının kütüphanesinde {total_estimated} kitap görünüyor ancak liste içeriği boş dönüyor. "
+                        "Rafınız gizli olabilir. Lütfen 1000Kitap Profil Ayarları ➔ Gizlilik menüsünden "
+                        "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
+                    )
+                raise Exception(
+                    "Bu kullanıcının 'okudukları' rafında taranacak kitap bulunamadı. "
+                    "Rafınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
+                )
+
+            total_books = len(collected_books)
+
+            # Kuyrukta henüz tamamlanmamış kalan kitaplar varsa kullanıcıya durum bildir
+            if resolved_count < total_books:
+                job.status = "resolving_isbn"
+                pct_isbn = int((resolved_count / total_books) * 100)
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "resolving_isbn",
+                    "message": f"Son ISBN numaraları tamamlanıyor: {resolved_count} / {total_books} (%{pct_isbn})...",
+                    "current": resolved_count,
+                    "total": total_books,
+                    "percent": pct_isbn,
+                    "last_book": job.last_book
+                })
+
+            # İşçilere bitiş sinyali gönder ve hepsinin tamamlanmasını bekle
+            for _ in range(5):
+                await isbn_queue.put(None)
+            await asyncio.gather(*ky_workers)
 
         # ======================================================================
         # 4.3. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA
@@ -550,10 +537,13 @@ async def scrape_user_books(job: JobState):
             "error": str(e)
         })
     finally:
-        await session.close()
+        if session:
+            try:
+                await session.close()
+            except Exception:
+                pass
 
 
-# ==============================================================================
 # 5. KUYRUK MOTORU WORKER (FIFO Queue Manager)
 # ==============================================================================
 async def queue_worker():
@@ -732,6 +722,26 @@ async def stream_job_events(job_id: str, request: Request):
         }
     )
 
+@app.get("/api/test-isbn")
+async def test_isbn_endpoint(q: str = "Hamlet William Shakespeare"):
+    ky_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={urllib.parse.quote(q)}"
+    async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as client:
+        try:
+            r = await client.get(url, headers=ky_headers)
+            return {
+                "status_code": r.status_code,
+                "text_length": len(r.text),
+                "html_snippet": r.text[:300]
+            }
+        except Exception as e:
+            return {"error": str(e), "type": str(type(e))}
+
+
 @app.get("/api/jobs/{job_id}/download")
 async def download_job_csv(job_id: str):
     """
@@ -744,26 +754,6 @@ async def download_job_csv(job_id: str):
 
     filename = "1000kitap.csv"
     data_stream = io.BytesIO(job.csv_bytes)
-
-
-@app.get("/api/test-isbn")
-async def test_isbn_endpoint(q: str = "Hamlet William Shakespeare"):
-    ky_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
-    }
-    url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={urllib.parse.quote(q)}"
-    session = cffi_requests.AsyncSession(impersonate="chrome120")
-    try:
-        r = await session.get(url, headers=ky_headers, timeout=8.0)
-        return {
-            "status_code": r.status_code,
-            "text_length": len(r.text),
-            "html_snippet": r.text[:300]
-        }
-    except Exception as e:
-        return {"error": str(e), "type": str(type(e))}
 
     # 15 dakikalık session boyunca kullanıcının tekrar tekrar indirebilmesi için 
     # ilk indirmede hemen silmiyoruz; cleanup_worker süresi dolunca RAM'den tamamen imha ediyor.
