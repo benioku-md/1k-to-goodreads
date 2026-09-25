@@ -47,11 +47,7 @@ MONTH_MAP = {
 }
 
 GOODREADS_CSV_HEADERS = [
-    "Title", "Author", "ISBN", "My Rating", "Average Rating",
-    "Publisher", "Binding", "Year Published", "Original Publication Year",
-    "Date Read", "Date Added", "Bookshelves", "Bookshelves with positions",
-    "Exclusive Shelf", "My Review", "Spoiler", "Private Notes",
-    "Read Count", "Recommended For", "Recommended By", "Owned Copies"
+    "Title", "Author", "ISBN", "My Rating", "Date Read", "Exclusive Shelf"
 ]
 
 class ExportRequest(BaseModel):
@@ -296,29 +292,14 @@ async def scrape_user_books(job: JobState):
                 if isinstance(durum_btn, dict) and durum_btn.get("okumaSayisi", 0) > 1:
                     read_count = durum_btn["okumaSayisi"]
 
-                # Goodreads CSV Kolonları Eşleştirmesi (İlk sütun resmî Book Id'dir)
+                # Goodreads CSV Kolonları Eşleştirmesi (Resmî 6 sütun standardı)
                 row = [
-                    sanitize_csv_field(title),                                      # Title (Sütun 1 - Kesinlikle ilk sırada)
+                    sanitize_csv_field(title),                                      # Title (Sütun 1)
                     sanitize_csv_field(author),                                     # Author (Sütun 2)
                     "",                                                             # ISBN (Sütun 3)
-                    str(user_rating),                                               # My Rating (Sütun 4)
-                    avg_rating_str,                                                 # Average Rating
-                    "",                                                             # Publisher
-                    "",                                                             # Binding
-                    "",                                                             # Year Published
-                    "",                                                             # Original Publication Year
-                    date_read,                                                      # Date Read
-                    date_added,                                                     # Date Added
-                    "",                                                             # Bookshelves
-                    "",                                                             # Bookshelves with positions
-                    "read",                                                         # Exclusive Shelf
-                    "",                                                             # My Review
-                    "",                                                             # Spoiler
-                    "",                                                             # Private Notes
-                    str(read_count),                                                # Read Count
-                    "",                                                             # Recommended For
-                    "",                                                             # Recommended By
-                    ""                                                              # Owned Copies
+                    str(user_rating) if user_rating > 0 else "",                    # My Rating (Sütun 4 - Puan yoksa boş kalır)
+                    date_read,                                                      # Date Read (Sütun 5 - YYYY/MM/DD)
+                    "read"                                                          # Exclusive Shelf (Sütun 6)
                 ]
                 all_books_rows.append(row)
                 job.current_count = len(all_books_rows)
