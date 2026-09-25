@@ -347,9 +347,6 @@ document.addEventListener('DOMContentLoaded', () => {
       downloadBtn.href = downloadUrl;
 
       showSection(completedSection);
-
-      // CSV'yi otomatik indirme tetiklemesi
-      triggerAutoDownload(downloadUrl);
       return;
     }
 
@@ -380,9 +377,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // OTOMATİK DOSYA İNDİRME
+  // MANUEL DOSYA İNDİRME
   // ============================================================================
-  async function triggerAutoDownload(url) {
+  downloadBtn.addEventListener('click', async (e) => {
+    const url = downloadBtn.href;
+    if (!url || url === '#' || url.endsWith('#')) return;
+
+    e.preventDefault();
     try {
       const resp = await fetch(url);
       if (resp.ok) {
@@ -399,22 +400,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
         return;
       }
-    } catch (e) {
-      console.warn('Otomatik blob indirme deneniyor:', e);
+    } catch (err) {
+      console.warn('Doğrudan indirmeye geçiliyor:', err);
     }
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = '1000kitap.csv';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-      }, 1000);
-    } catch (e) {
-      console.warn('Otomatik indirme tetiklenemedi:', e);
-    }
-  }
+    window.location.href = url;
+  });
 
   // ============================================================================
   // HATA VE SIFIRLAMA YÖNETİMİ
