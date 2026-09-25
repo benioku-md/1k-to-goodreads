@@ -385,7 +385,7 @@ async def scrape_user_books(job: JobState):
                 if clean_a:
                     query += f"+inauthor:{clean_a}"
 
-                google_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query)}&langRestrict=tr&maxResults=1"
+                google_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query)}&maxResults=1"
                 if google_api_key:
                     google_url += f"&key={google_api_key}"
 
@@ -439,7 +439,88 @@ async def scrape_user_books(job: JobState):
         await asyncio.gather(*(resolve_isbn_task(b) for b in collected_books))
 
         # ======================================================================
-        # 4.3. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA
+        # 4.3. 1000KİTAP FALLBACK (GOOGLE'DA BULUNAMAYANLAR İÇİN KURTARMA)
+        # ======================================================================
+        missing_books = [b for b in collected_books if not b.get("isbn") and b.get("id") and b.get("seo_adi")]
+        if missing_books:
+            total_missing = len(missing_books)
+            job.status = "resolving_isbn_1k"
+            await job.broadcast({
+                "type": "status",
+                "status": "resolving_isbn_1k",
+                "message": f"Google'da bulunamayan {total_missing} kitabın ISBN'si 1000Kitap üzerinden tamamlanıyor...",
+                "current": 0,
+                "total": total_missing,
+                "percent": 0
+            })
+
+            html_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            }
+
+            for idx, book in enumerate(missing_books):
+                seo = book.get("seo_adi")
+                bid = book.get("id")
+                url_1k = f"https://1000kitap.com/kitap/{seo}--{bid}"
+                found_isbn_1k = ""
+
+                for attempt in range(2):
+                    try:
+                        resp_1k = await session.get(url_1k, headers=html_headers, timeout=6.0)
+                        if resp_1k.status_code == 200:
+                            html_text = resp_1k.text
+                            # 1. Meta tag üzerinden doğrudan ISBN
+                            m_meta = re.search(
+                                r'<meta\s+property=["\']book:isbn["\']\s+content=["\']([^"\']+)["\']',
+                                html_text,
+                                re.IGNORECASE
+                            )
+                            if m_meta:
+                                raw_val = re.sub(r'[^0-9Xx]', '', m_meta.group(1)).upper().strip()
+                                if len(raw_val) in (10, 13):
+                                    found_isbn_1k = raw_val
+
+                            # 2. Regex fallback (978, 979, 975)
+                            if not found_isbn_1k:
+                                m_regex = re.search(r'(?:97[89][0-9\-]{10,14}|975[0-9\-]{7,11})', html_text)
+                                if m_regex:
+                                    clean_reg = re.sub(r'[^0-9Xx]', '', m_regex.group(0)).upper().strip()
+                                    if len(clean_reg) in (10, 13):
+                                        found_isbn_1k = clean_reg
+                            break
+                        elif resp_1k.status_code == 429:
+                            await asyncio.sleep(2.0)
+                            continue
+                        else:
+                            break
+                    except Exception:
+                        await asyncio.sleep(0.5)
+
+                if found_isbn_1k:
+                    book["isbn"] = found_isbn_1k
+
+                pct = int(((idx + 1) / total_missing) * 100)
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "resolving_isbn_1k",
+                    "message": f"1000Kitap üzerinden tamamlanıyor: {idx + 1} / {total_missing} ({book['title']})...",
+                    "current": idx + 1,
+                    "total": total_missing,
+                    "percent": pct,
+                    "last_book": {
+                        "title": book["title"],
+                        "author": book["author"],
+                        "cover": book["cover"]
+                    }
+                })
+
+                # 1000Kitap ve Cloudflare toleransı için 350ms hız limiti
+                await asyncio.sleep(0.35)
+
+        # ======================================================================
+        # 4.4. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA
         # ======================================================================
         all_books_rows: List[List[str]] = []
         for b in collected_books:
