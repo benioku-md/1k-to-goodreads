@@ -157,19 +157,12 @@ async def scrape_user_books(job: JobState):
     """
     device_code = generate_device_code()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Api-V2": "1",
         "1-CIHAZ-KODU": device_code,
         "Referer": "https://1000kitap.com/",
         "Origin": "https://1000kitap.com",
         "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site"
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
     }
 
     url = "https://api.1000kitap.com/v2/uyeler/kitaplar/liste"
@@ -182,7 +175,6 @@ async def scrape_user_books(job: JobState):
     session = cffi_requests.AsyncSession(impersonate="chrome120")
 
     try:
-
         while has_more:
             params = {
                 "kadi": job.username,
@@ -196,19 +188,24 @@ async def scrape_user_books(job: JobState):
                 params["kume"] = kume
 
             response = None
-            for retry in range(3):
+            for retry in range(4):
                 try:
                     response = await session.get(url, params=params, headers=headers, timeout=25.0)
                     if response.status_code in (403, 429):
-                        # 1000Kitap Cloudflare geçici rate-limit engeli -> Taze cihaz kodu ve bekleme
-                        await asyncio.sleep(1.5 * (retry + 1))
+                        # Cloudflare geçici rate-limit / cookie engeli -> Taze oturum ve cihaz koduyla kurtarma
+                        await asyncio.sleep(2.0 * (retry + 1))
+                        try:
+                            await session.close()
+                        except Exception:
+                            pass
+                        session = cffi_requests.AsyncSession(impersonate="chrome120")
                         headers["1-CIHAZ-KODU"] = generate_device_code()
                         continue
                     break
                 except Exception as net_err:
-                    if retry == 2:
+                    if retry == 3:
                         raise net_err
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(1.5)
 
             if response is None or response.status_code != 200:
                 code = response.status_code if response else "Bilinmiyor"
@@ -338,9 +335,8 @@ async def scrape_user_books(job: JobState):
             if not has_more or not raw_list:
                 break
 
-            # Hız sınırı (Max 2 istek/saniye)
-            # Cloudflare ve 1000Kitap güvenlik toleransı için 700ms bekliyoruz.
-            await asyncio.sleep(0.70)
+            # Hız sınırı (Cloudflare ve 1000Kitap güvenlik toleransı için 900ms bekliyoruz)
+            await asyncio.sleep(0.90)
 
         if not all_books_rows:
             if total_estimated > 0:
