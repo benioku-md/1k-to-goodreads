@@ -1,4 +1,4 @@
-# 📚 1000Kitap'tan Goodreads'e Okuma Geçmişi Aktarıcı (https://benioku-md.github.io/1k-to-goodreads/)
+# 📚 1000Kitap'tan Goodreads'e Okuma Geçmişi Aktarıcı
 
 1k-to-goodreads; 1000Kitap üzerindeki okuma geçmişinizi, verdiğiniz puanları ve okuma tarihlerinizi resmî **Goodreads CSV formatına** dönüştüren; veri tabanı barındırmayan, kullanıcı kaydı ve log tutmayan bir araçtır.
 
