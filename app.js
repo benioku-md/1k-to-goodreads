@@ -4,7 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Canlı Backend API URL'i (GitHub Pages üzerindeyken AltunHost HTTPS tüneline bağlanır, yereldeyken göreceli çalışır)
+  // Canlı Backend API URL'i (GitHub Pages üzerindeyken tünel adresine bağlanır, yereldeyken göreceli çalışır)
   const API_BASE_URL = window.location.hostname.includes('github.io')
     ? 'https://knight-analytical-fork-sessions.trycloudflare.com'
     : '';
@@ -146,8 +146,9 @@ document.addEventListener('DOMContentLoaded', () => {
       initProgressView(data);
       showSection(progressSection);
 
-      // Canlı SSE akışını başlat
+      // Canlı SSE akışı ve anlık durum sorgulamasını (polling) eşzamanlı başlat
       startEventStream(currentJobId);
+      startFallbackPolling(currentJobId);
 
     } catch (err) {
       if (autoRetryCount < MAX_AUTO_RETRIES) {
@@ -189,11 +190,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // İLERLEME EKRANI BAŞLATICI
   // ============================================================================
   function initProgressView(jobData) {
-    statusBadgeText.textContent = 'KUYRUGA ALINDI';
+    statusBadgeText.textContent = jobData.queue_position > 1 ? 'SIRADA' : 'BAŞLATILIYOR';
     statusBadge.style.borderColor = 'var(--ink-espresso)';
     queueInfoText.textContent = jobData.queue_position > 1 
       ? `Sıradasınız (Önünüzde ${jobData.queue_position - 1} kişi var)...` 
-      : 'Sıradaki işlem sizin, aktarım başlıyor...';
+      : 'Sıradaki işlem sizin, aktarım başlatılıyor...';
 
     progressBar.style.width = '3%';
     progressBar.setAttribute('aria-valuenow', '3');
@@ -223,21 +224,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     activeEventSource.onerror = (err) => {
-      console.warn('SSE bağlantısı kesildi, fallback polling devreye giriyor...', err);
+      console.warn('SSE bağlantısı kesildi, polling üzerinden devam ediliyor...', err);
       if (activeEventSource) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      // SSE başarısız olursa JSON polling başlat
       startFallbackPolling(jobId);
     };
   }
 
-  // SSE Kesintisi Durumunda Otomatik JSON Polling
+  // SSE Gecikmelerine Karşı Kesintisiz Anlık JSON Polling Motoru
   function startFallbackPolling(jobId) {
     if (activePollingInterval) return;
 
-    activePollingInterval = setInterval(async () => {
+    const poll = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/status`);
         if (!res.ok) {
@@ -252,37 +252,45 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         console.error('Polling hatası:', e);
       }
-    }, 2000);
+    };
+
+    // İlk sorguyu 250ms sonra hemen yap, ardından 750ms aralıklarla sürdür
+    setTimeout(poll, 250);
+    activePollingInterval = setInterval(poll, 750);
   }
 
   // ============================================================================
   // GÖREV GÜNCELLEMELERİNİN EKRANA YANSITILMASI
   // ============================================================================
   function handleJobUpdate(data) {
+    if (!data) return;
+
     // 1. KUYRUKTA BEKLEME DURUMU
     if (data.status === 'queued') {
-      statusBadgeText.textContent = 'SIRADA';
-      const pos = data.position || data.queue_position || 1;
+      const pos = data.position !== undefined ? data.position : (data.queue_position !== undefined ? data.queue_position : 1);
       const waitCount = pos - 1;
-      queueInfoText.textContent = waitCount > 0 
-        ? `Sıradasınız (Önünüzde ${waitCount} kişi var)...` 
-        : 'Sıradaki işlem sizin, aktarım başlıyor...';
+      if (waitCount > 0) {
+        statusBadgeText.textContent = 'SIRADA';
+        statusBadge.style.borderColor = 'var(--ink-espresso)';
+        queueInfoText.textContent = `Sıradasınız (Önünüzde ${waitCount} kişi var)...`;
+        return;
+      }
+      statusBadgeText.textContent = 'BAŞLATILIYOR';
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+      queueInfoText.textContent = data.message || 'Sıradaki işlem sizin, aktarım başlatılıyor...';
       return;
     }
 
     // 2. TARAMA VEYA ISBN ÇÖZÜMLEME DURUMU
     const isIsbnResolving = data.status && (data.status.startsWith('resolving_isbn') || data.status === 'resolving_isbn');
-    if (data.status === 'scraping' || isIsbnResolving || data.type === 'progress') {
+    if (data.status === 'scraping' || isIsbnResolving || data.type === 'progress' || data.type === 'status') {
       if (data.status === 'resolving_isbn_strict') {
         statusBadgeText.textContent = 'ISBN (KATI MOD)';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else if (data.status === 'resolving_isbn_loose') {
         statusBadgeText.textContent = 'ISBN (GEVŞEK MOD)';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
-      } else if (data.status === 'resolving_isbn_ky') {
-        statusBadgeText.textContent = 'KİTAPYURDU TARANIYOR';
-        statusBadge.style.borderColor = 'var(--accent-terracotta)';
-      } else if (isIsbnResolving) {
+      } else if (data.status === 'resolving_isbn_ky' || isIsbnResolving) {
         statusBadgeText.textContent = 'ISBN ÇÖZÜLÜYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else {
@@ -290,22 +298,22 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBadge.style.borderColor = 'var(--accent-sage)';
       }
 
-      const current = data.current || data.current_count || 0;
-      const total = data.total || data.total_count || 0;
-      const percent = data.percent !== undefined ? data.percent : Math.min(99, Math.round((current / (total || 1)) * 100));
+      const current = data.current !== undefined ? data.current : (data.current_count !== undefined ? data.current_count : 0);
+      const total = data.total !== undefined ? data.total : (data.total_count !== undefined ? data.total_count : 0);
+      const percent = data.percent !== undefined ? data.percent : (total > 0 ? Math.min(99, Math.round((current / total) * 100)) : 0);
 
       if (isIsbnResolving || (data.message && (data.message.includes('ISBN') || data.message.includes('Kitapyurdu')))) {
-        queueInfoText.textContent = data.message || `ISBN numaraları doğrulanıyor: ${current} / ${total} (%${percent})...`;
+        queueInfoText.textContent = data.message || `ISBN numaraları tamamlanıyor: ${current} / ${total || '?'} (%${percent})...`;
       } else {
-        queueInfoText.textContent = total > 0 
+        queueInfoText.textContent = data.message || (total > 0 
           ? `Kitaplar taranıyor: ${current} / ${total} (%${percent})...`
-          : `Kitaplar taranıyor: ${current} kitap bulundu...`;
+          : `Kitaplar taranıyor: ${current} kitap bulundu...`);
       }
 
-      countDisplay.textContent = total > 0 ? `${current} / ${total}` : `${current} / ?`;
+      countDisplay.textContent = total > 0 ? `${current} / ${total}` : `${current} / --`;
       percentDisplay.textContent = `%${percent}`;
       
-      const barWidth = Math.max(5, Math.min(100, percent));
+      const barWidth = Math.max(3, Math.min(100, percent));
       progressBar.style.width = `${barWidth}%`;
       progressBar.setAttribute('aria-valuenow', String(percent));
 

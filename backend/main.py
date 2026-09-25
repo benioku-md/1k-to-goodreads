@@ -61,7 +61,8 @@ class JobState:
         self.job_id: str = job_id
         self.username: str = username
         self.shelf: str = shelf
-        self.status: str = "queued"  # queued, scraping, completed, failed
+        self.status: str = "queued"  # queued, scraping, resolving_isbn, completed, failed
+        self.message: str = "Kuyruğa alındı..."
         self.queue_position: int = 1
         self.current_count: int = 0
         self.total_count: int = 0
@@ -76,6 +77,7 @@ class JobState:
         return {
             "job_id": self.job_id,
             "status": self.status,
+            "message": self.message,
             "queue_position": self.queue_position,
             "current_count": self.current_count,
             "total_count": self.total_count,
@@ -309,11 +311,11 @@ async def scrape_user_books(job: JobState):
                         except Exception:
                             pass
 
-                    # Yabanci datacenter engeli varsa (Render ortami), AltunHOST TR IP uzerinden aninda coz
-                    if not found_isbn and cf_blocked:
+                    # Yabanci datacenter engeli varsa, varsa harici cozumleyici uzerinden coz
+                    fallback_resolver = os.getenv("FALLBACK_RESOLVER_URL", "")
+                    if not found_isbn and cf_blocked and fallback_resolver:
                         try:
-                            b_url = "http://5.175.136.60:8085/api/resolve-isbn"
-                            b_resp = await client.get(b_url, params={"title": raw_title, "author": raw_author}, timeout=4.0)
+                            b_resp = await client.get(fallback_resolver, params={"title": raw_title, "author": raw_author}, timeout=4.0)
                             if b_resp.status_code == 200:
                                 found_isbn = b_resp.json().get('isbn', '')
                         except Exception:
@@ -325,21 +327,34 @@ async def scrape_user_books(job: JobState):
                 resolved_count += 1
                 isbn_queue.task_done()
 
+                target_total = job.total_count if job.total_count > 0 else (len(collected_books) or total_books or 1)
+                pct_isbn = min(99, int((resolved_count / target_total) * 100))
+
                 # Her 10 kitapta 1 gorsel gondererek sunucuyu ve tarayiciyi rahatlat
-                include_cover = (resolved_count % 10 == 0) or (resolved_count == total_books)
+                include_cover = (resolved_count % 10 == 0) or (resolved_count == target_total)
                 cover_to_send = book.get("cover", "") if include_cover else ""
 
-                if total_books > 0:
-                    pct_isbn = min(99, int((resolved_count / total_books) * 100))
-                    await job.broadcast({
-                        "type": "progress",
-                        "status": "resolving_isbn",
-                        "message": f"ISBN numaraları tamamlanıyor: {resolved_count} / {total_books} (%{pct_isbn})...",
-                        "current": resolved_count,
-                        "total": total_books,
-                        "percent": pct_isbn,
-                        "last_book": {"title": raw_title, "author": raw_author, "cover": cover_to_send}
-                    })
+                job.status = "resolving_isbn"
+                job.current_count = resolved_count
+                job.percent = pct_isbn
+                job.message = f"ISBN numaraları tamamlanıyor: {resolved_count} / {target_total} (%{pct_isbn})..."
+                if raw_title:
+                    existing_cover = job.last_book.get("cover") if job.last_book else ""
+                    job.last_book = {
+                        "title": raw_title,
+                        "author": raw_author,
+                        "cover": cover_to_send or existing_cover
+                    }
+
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "resolving_isbn",
+                    "message": job.message,
+                    "current": resolved_count,
+                    "total": target_total,
+                    "percent": pct_isbn,
+                    "last_book": job.last_book
+                })
 
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
@@ -472,9 +487,11 @@ async def scrape_user_books(job: JobState):
                 else:
                     job.percent = min(95, page * 10)
 
+                job.message = f"Kitaplar taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
                 await job.broadcast({
                     "type": "progress",
                     "status": "scraping",
+                    "message": job.message,
                     "current": job.current_count,
                     "total": job.total_count,
                     "percent": job.percent,
@@ -593,10 +610,14 @@ async def queue_worker():
                     })
 
             job.status = "scraping"
+            job.message = "Kitaplık taranmaya başlandı..."
             await job.broadcast({
                 "type": "status",
                 "status": "scraping",
-                "message": "Kitaplık taranmaya başlandı..."
+                "message": job.message,
+                "current": job.current_count,
+                "total": job.total_count,
+                "percent": job.percent
             })
 
             await scrape_user_books(job)
@@ -702,6 +723,7 @@ async def stream_job_events(job_id: str, request: Request):
         initial_payload = {
             "type": "status",
             "status": job.status,
+            "message": job.message,
             "position": job.queue_position,
             "current": job.current_count,
             "total": job.total_count,
@@ -735,7 +757,7 @@ async def stream_job_events(job_id: str, request: Request):
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no"
         }
@@ -743,7 +765,7 @@ async def stream_job_events(job_id: str, request: Request):
 
 @app.get("/api/resolve-isbn")
 async def resolve_isbn_api(title: str, author: str = ""): 
-    """AltunHOST TR IP uzerinden ISBN arama servisi."""
+    """ISBN arama servisi."""
     ky_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
