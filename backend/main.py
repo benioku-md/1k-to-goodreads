@@ -159,8 +159,7 @@ async def scrape_user_books(job: JobState):
     headers = {
         "Api-V2": "1",
         "1-CIHAZ-KODU": device_code,
-        "Referer": "https://1000kitap.com/",
-        "Origin": "https://1000kitap.com",
+        "User-Agent": "okur/2.60.60 (Android 14; Mobile)",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
     }
@@ -172,7 +171,7 @@ async def scrape_user_books(job: JobState):
     all_books_rows: List[List[str]] = []
     total_estimated = 0
 
-    session = cffi_requests.AsyncSession(impersonate="chrome120")
+    session = cffi_requests.AsyncSession()
 
     try:
         while has_more:
@@ -181,7 +180,7 @@ async def scrape_user_books(job: JobState):
                 "raf": job.shelf,
                 "sayfa": page,
                 "appVersion": "2.60.60",
-                "os": "web",
+                "os": "android",
                 "hl": "tr"
             }
             if kume:
@@ -199,7 +198,7 @@ async def scrape_user_books(job: JobState):
                                 await session.close()
                             except Exception:
                                 pass
-                            session = cffi_requests.AsyncSession(impersonate="chrome120")
+                            session = cffi_requests.AsyncSession()
                             headers["1-CIHAZ-KODU"] = generate_device_code()
                             continue
                         break
