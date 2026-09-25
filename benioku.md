@@ -17,11 +17,11 @@ Canlı Sürüm: [benioku-md.github.io/1k-to-goodreads](https://benioku-md.github
 ## 🔍 Akıllı 3 Kademeli ISBN Çözümleme Mimarisi
 Goodreads'e yapılan aktarımlarda kitap adı ve yazar uyuşmazlıklarını sıfıra indirmek amacıyla sistem kademeli bir ISBN araması çalıştırır:
 
-1. **1. Aşama — Google Books Katı Mod (`intitle` + `inauthor`):**
+1. **Google Books Katı Mod (`intitle` + `inauthor`):**
    Tüm liste için aynı anda 5 paralel asenkron sorgu ile Google Books üzerinden resmî arama yapılır. Tüm kitaplar bulunursa sonraki aşamalar devreye girmez.
-2. **2. Aşama — Google Books Gevşek Mod (`q=Kitap Yazar`):**
+2. **Google Books Gevşek Mod (`q=Kitap Yazar`):**
    Yayınevi veya çevirmen farklılığından dolayı ilk aşamada bulunamayan kitaplar için serbest metin araması yapılır.
-3. **3. Aşama — Kitapyurdu**
+3. **Kitapyurdu (15x Paralel Turbo Motoru):**
    Google üzerinde bulunamayan nadir veya yerli baskılar için Kitapyurdu kataloğu taranarak ISBN cımbızlanır.
 
 ---
