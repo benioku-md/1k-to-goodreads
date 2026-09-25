@@ -745,6 +745,26 @@ async def download_job_csv(job_id: str):
     filename = "1000kitap.csv"
     data_stream = io.BytesIO(job.csv_bytes)
 
+
+@app.get("/api/test-isbn")
+async def test_isbn_endpoint(q: str = "Hamlet William Shakespeare"):
+    ky_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={urllib.parse.quote(q)}"
+    session = cffi_requests.AsyncSession(impersonate="chrome120")
+    try:
+        r = await session.get(url, headers=ky_headers, timeout=8.0)
+        return {
+            "status_code": r.status_code,
+            "text_length": len(r.text),
+            "html_snippet": r.text[:300]
+        }
+    except Exception as e:
+        return {"error": str(e), "type": str(type(e))}
+
     # 15 dakikalık session boyunca kullanıcının tekrar tekrar indirebilmesi için 
     # ilk indirmede hemen silmiyoruz; cleanup_worker süresi dolunca RAM'den tamamen imha ediyor.
     return StreamingResponse(
