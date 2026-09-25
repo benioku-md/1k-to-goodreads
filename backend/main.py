@@ -47,7 +47,7 @@ MONTH_MAP = {
 }
 
 GOODREADS_CSV_HEADERS = [
-    "Book Id", "Title", "Author", "ISBN", "My Rating", "Average Rating",
+    "Title", "Author", "ISBN", "My Rating", "Average Rating",
     "Publisher", "Binding", "Year Published", "Original Publication Year",
     "Date Read", "Date Added", "Bookshelves", "Bookshelves with positions",
     "Exclusive Shelf", "My Review", "Spoiler", "Private Notes",
@@ -298,11 +298,10 @@ async def scrape_user_books(job: JobState):
 
                 # Goodreads CSV Kolonları Eşleştirmesi (İlk sütun resmî Book Id'dir)
                 row = [
-                    "",                                                             # Book Id (Resmî format, Goodreads yeni eklemede boş bekler)
-                    sanitize_csv_field(title),                                      # Title (Tertemiz okunur)
-                    sanitize_csv_field(author),                                     # Author
-                    "",                                                             # ISBN
-                    str(user_rating),                                               # My Rating (0 veya 1-5)
+                    sanitize_csv_field(title),                                      # Title (Sütun 1 - Kesinlikle ilk sırada)
+                    sanitize_csv_field(author),                                     # Author (Sütun 2)
+                    "",                                                             # ISBN (Sütun 3)
+                    str(user_rating),                                               # My Rating (Sütun 4)
                     avg_rating_str,                                                 # Average Rating
                     "",                                                             # Publisher
                     "",                                                             # Binding
