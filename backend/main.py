@@ -378,22 +378,23 @@ async def scrape_user_books(job: JobState):
             return ""
 
         async def fetch_google_volume(query_str: str) -> list:
-            google_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query_str)}&maxResults=2"
+            google_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query_str)}&maxResults=5"
             if google_api_key:
                 google_url += f"&key={google_api_key}"
             for _ in range(2):
                 try:
-                    g_resp = await session.get(google_url, timeout=5.0)
+                    g_resp = await session.get(google_url, timeout=4.0)
                     if g_resp.status_code == 200:
                         g_data = g_resp.json()
                         return g_data.get("items", [])
                     elif g_resp.status_code == 429:
-                        await asyncio.sleep(1.0)
+                        # Kota aşımı durumunda sunucuyu kilitlememek için hızlı geç
+                        await asyncio.sleep(0.5)
                         continue
                     else:
                         break
                 except Exception:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.3)
             return []
 
         # ----------------------------------------------------------------------
@@ -489,7 +490,7 @@ async def scrape_user_books(job: JobState):
             await asyncio.gather(*(task_loose(b) for b in missing_after_strict))
 
         # ----------------------------------------------------------------------
-        # 3. AŞAMA: KİTAPYURDU 15x PARALEL ASENKRON MOTORU (Hâlâ Bulunamayanlar)
+        # 3. AŞAMA: KİTAPYURDU STEALTH ASENKRON MOTORU (Hâlâ Bulunamayanlar)
         # ----------------------------------------------------------------------
         missing_after_loose = [b for b in collected_books if not b.get("isbn")]
         if missing_after_loose:
@@ -504,58 +505,124 @@ async def scrape_user_books(job: JobState):
                 "percent": 0
             })
 
-            sem_ky = asyncio.Semaphore(15)
+            # Cloudflare bot filtresine takılmamak için 3 paralel ve 200ms güvenlik aralığı
+            sem_ky = asyncio.Semaphore(3)
             ky_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
             }
             count_ky = 0
 
+            def normalize_tr_text(text: str) -> str:
+                if not text:
+                    return ""
+                text = text.lower()
+                for tr, en in [('ı', 'i'), ('ğ', 'g'), ('ü', 'u'), ('ş', 's'), ('ö', 'o'), ('ç', 'c')]:
+                    text = text.replace(tr, en)
+                return re.sub(r'[^a-z0-9\s]', ' ', text).strip()
+
+            def pick_best_ky_url(target_title: str, html: str) -> str:
+                matches = re.findall(r'<a[^>]+href=["\']([^"\']+/kitap/[^/"\']+/\d+\.html[^"\']*)["\'][^>]*>(.*?)</a>', html, re.DOTALL)
+                norm_b = normalize_tr_text(target_title)
+                words_b = set(norm_b.split())
+                best_score = -1
+                best_url = ""
+                for href, inner in matches:
+                    clean_text = re.sub(r'<[^>]+>', '', inner).strip()
+                    if not clean_text or clean_text.lower() in ('ürünü incele', 'satın al', 'incele', 'detay'):
+                        continue
+                    norm_c = normalize_tr_text(clean_text)
+                    if norm_b == norm_c:
+                        score = 100
+                    elif norm_b in norm_c:
+                        score = 90
+                    elif norm_c in norm_b:
+                        score = 80
+                    else:
+                        cand_words = set(norm_c.split())
+                        overlap = words_b.intersection(cand_words)
+                        score = int((len(overlap) / len(words_b)) * 70) if words_b else 0
+
+                    slug = href.split('/kitap/')[1].split('/')[0].replace('-', ' ')
+                    slug_words = set(slug.split())
+                    if words_b.intersection(slug_words):
+                        score += 15
+
+                    if score > best_score:
+                        best_score = score
+                        best_url = href
+                if best_score >= 35:
+                    return best_url
+                return ""
+
             async def task_ky(book: dict):
                 nonlocal count_ky
                 raw_title = book.get("title", "")
+                raw_author = book.get("author", "")
                 found_isbn = ""
                 if raw_title:
-                    t_clean = re.sub(r'\s*\([^)]*\)', '', raw_title)
-                    if " - " in t_clean:
-                        t_clean = t_clean.split(" - ")[0]
-                    t_clean = t_clean.replace("`", "").replace("'", "").strip()
+                    clean_title = re.sub(r'[\-\:\&/].*$', '', re.sub(r'\s*\([^)]*\)', '', raw_title)).strip()
+                    base_title = re.sub(r'\s+\d+$', '', clean_title).strip()
 
-                    if t_clean:
-                        search_url = f"https://www.kitapyurdu.com/index.php?route=product/list&filter_name={urllib.parse.quote(t_clean)}"
-                        async with sem_ky:
+                    queries = [f"{raw_title} {raw_author}".strip()]
+                    if clean_title and clean_title != raw_title:
+                        queries.append(f"{clean_title} {raw_author}".strip())
+                    if base_title and base_title not in (raw_title, clean_title):
+                        queries.append(f"{base_title} {raw_author}".strip())
+                    if clean_title:
+                        queries.append(clean_title)
+
+                    async with sem_ky:
+                        for q in queries:
+                            if found_isbn:
+                                break
+                            search_url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={urllib.parse.quote(q)}"
                             for _ in range(2):
                                 try:
-                                    s_resp = await session.get(search_url, headers=ky_headers, timeout=5.0)
+                                    s_resp = await session.get(search_url, headers=ky_headers, timeout=6.0)
                                     if s_resp.status_code == 200:
-                                        m_link = re.search(r'href="((?:https://www\.kitapyurdu\.com)?/kitap/[^/"]+/\d+\.html[^"]*)"', s_resp.text)
-                                        if m_link:
-                                            prod_url = m_link.group(1)
+                                        best_link = pick_best_ky_url(clean_title or raw_title, s_resp.text)
+                                        if best_link:
+                                            prod_url = best_link.replace("&amp;", "&")
                                             if not prod_url.startswith("http"):
                                                 prod_url = "https://www.kitapyurdu.com" + prod_url
-                                            p_resp = await session.get(prod_url, headers=ky_headers, timeout=5.0)
+                                            p_resp = await session.get(prod_url, headers=ky_headers, timeout=6.0)
                                             if p_resp.status_code == 200:
                                                 p_html = p_resp.text
-                                                m_isbn = re.search(r'"isbn":\s*"([0-9\-]+)"', p_html, re.IGNORECASE)
+                                                # Yöntem A: JSON-LD Schema
+                                                m_isbn = re.search(r'"isbn":\s*"([0-9\-Xx]+)"', p_html, re.IGNORECASE)
                                                 if m_isbn:
                                                     val = re.sub(r'[^0-9Xx]', '', m_isbn.group(1)).upper().strip()
                                                     if len(val) in (10, 13):
                                                         found_isbn = val
+
+                                                # Yöntem B: Ürün özellikleri tablosu (Tükenmiş kitaplar ve 975/ISBN-10 için)
                                                 if not found_isbn:
-                                                    m_raw978 = re.search(r'978[0-9\-]{10,14}', p_html)
-                                                    if m_raw978:
-                                                        val = re.sub(r'[^0-9Xx]', '', m_raw978.group(0)).upper().strip()
+                                                    m_table = re.search(r'ISBN:.*?<span[^>]*class=["\'][^"\']*attributes__value[^"\']*["\'][^>]*>\s*([0-9\-Xx]+)\s*<', p_html, re.DOTALL | re.IGNORECASE)
+                                                    if m_table:
+                                                        val = re.sub(r'[^0-9Xx]', '', m_table.group(1)).upper().strip()
+                                                        if len(val) in (10, 13):
+                                                            found_isbn = val
+
+                                                # Yöntem C: Sayfa içi regex (978, 979, 975)
+                                                if not found_isbn:
+                                                    m_raw = re.search(r'(?:97[89][0-9\-]{10,14}|975[0-9\-]{7,11})', p_html)
+                                                    if m_raw:
+                                                        val = re.sub(r'[^0-9Xx]', '', m_raw.group(0)).upper().strip()
                                                         if len(val) in (10, 13):
                                                             found_isbn = val
                                         break
                                     elif s_resp.status_code == 429:
-                                        await asyncio.sleep(1.0)
+                                        await asyncio.sleep(1.5)
                                         continue
                                     else:
                                         break
                                 except Exception:
                                     await asyncio.sleep(0.5)
+
+                            # Cloudflare'ı tetiklememek için minik güvenlik payı
+                            await asyncio.sleep(0.20)
 
                 if found_isbn:
                     book["isbn"] = found_isbn
