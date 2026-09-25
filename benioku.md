@@ -2,7 +2,7 @@
 
 **1k-to-goodreads**; 1000Kitap üzerindeki okuma geçmişinizi, okuma tarihlerinizi, puanlarınızı ve kitap kapaklarınızı toplayıp akıllı **Kitapyurdu ISBN Çözümleme Motoru** ile zenginleştirerek resmî **Goodreads CSV formatına** dönüştüren; Kindle estetiğinde tasarlanmış, veri tabanı barındırmayan, kullanıcı kaydı ve log tutmayan açık kaynaklı bir araçtır.
 
-Canlı Sürüm: <a href="https://benioku-md.github.io/1k-to-goodreads/" target="_blank" rel="noopener noreferrer">benioku-md.github.io/1k-to-goodreads</a>
+Canlı Sürüm: <a href="http://5.175.136.60:8085" target="_blank" rel="noopener noreferrer">http://5.175.136.60:8085</a> | <a href="https://benioku-md.github.io/1k-to-goodreads/" target="_blank" rel="noopener noreferrer">benioku-md.github.io/1k-to-goodreads</a>
 
 ---
 
