@@ -280,11 +280,17 @@ async def scrape_user_books(job: JobState):
                     if clean_title and clean_title not in queries:
                         queries.append(clean_title)
 
+                    cf_blocked = False
                     for q in queries:
+                        if cf_blocked:
+                            break
                         try:
                             encoded_q = urllib.parse.quote(q)
                             search_url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={encoded_q}&fuzzy=0"
-                            resp = await client.get(search_url, headers=ky_headers)
+                            resp = await client.get(search_url, headers=ky_headers, timeout=3.5)
+                            if resp.status_code in (403, 429):
+                                cf_blocked = True
+                                break
                             if resp.status_code == 200:
                                 html_text = resp.text
                                 isbn = extract_isbn(html_text)
@@ -294,13 +300,23 @@ async def scrape_user_books(job: JobState):
 
                                 best_prod_url = pick_best_ky_url(clean_title or raw_title, html_text)
                                 if best_prod_url:
-                                    prod_resp = await client.get(best_prod_url, headers=ky_headers)
+                                    prod_resp = await client.get(best_prod_url, headers=ky_headers, timeout=3.5)
                                     if prod_resp.status_code == 200:
                                         p_isbn = extract_isbn(prod_resp.text)
                                         if p_isbn:
                                             found_isbn = p_isbn
                                             break
-                            await asyncio.sleep(0.10)
+                            await asyncio.sleep(0.05)
+                        except Exception:
+                            pass
+
+                    # Yabanci datacenter engeli varsa (Render ortami), AltunHOST TR IP kopyasina sor
+                    if not found_isbn and cf_blocked:
+                        try:
+                            b_url = "http://5.175.136.60:8085/api/resolve-isbn"
+                            b_resp = await client.get(b_url, params={"title": raw_title, "author": raw_author}, timeout=4.0)
+                            if b_resp.status_code == 200:
+                                found_isbn = b_resp.json().get('isbn', '')
                         except Exception:
                             pass
 
@@ -309,6 +325,19 @@ async def scrape_user_books(job: JobState):
 
                 resolved_count += 1
                 isbn_queue.task_done()
+
+                # Her kitap cozuldugunde anlik canli durum guncellemesi gonder
+                if total_books > 0:
+                    pct_isbn = min(99, int((resolved_count / total_books) * 100))
+                    await job.broadcast({
+                        "type": "progress",
+                        "status": "resolving_isbn",
+                        "message": f"ISBN numaraları tamamlanıyor: {resolved_count} / {total_books} (%{pct_isbn})...",
+                        "current": resolved_count,
+                        "total": total_books,
+                        "percent": pct_isbn,
+                        "last_book": {"title": raw_title, "author": raw_author, "cover": book.get("cover", "")}
+                    })
 
         async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as ky_client:
             ky_workers = [asyncio.create_task(ky_worker(ky_client)) for _ in range(5)]
@@ -470,20 +499,6 @@ async def scrape_user_books(job: JobState):
                 )
 
             total_books = len(collected_books)
-
-            # Kuyrukta henüz tamamlanmamış kalan kitaplar varsa kullanıcıya durum bildir
-            if resolved_count < total_books:
-                job.status = "resolving_isbn"
-                pct_isbn = int((resolved_count / total_books) * 100)
-                await job.broadcast({
-                    "type": "progress",
-                    "status": "resolving_isbn",
-                    "message": f"Son ISBN numaraları tamamlanıyor: {resolved_count} / {total_books} (%{pct_isbn})...",
-                    "current": resolved_count,
-                    "total": total_books,
-                    "percent": pct_isbn,
-                    "last_book": job.last_book
-                })
 
             # İşçilere bitiş sinyali gönder ve hepsinin tamamlanmasını bekle
             for _ in range(5):
@@ -721,6 +736,47 @@ async def stream_job_events(job_id: str, request: Request):
             "X-Accel-Buffering": "no"
         }
     )
+
+@app.get("/api/resolve-isbn")
+async def resolve_isbn_api(title: str, author: str = ""): 
+    """AltunHOST TR IP uzerinden ISBN arama servisi."""
+    ky_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    clean_title = re.sub(r'[\-\:\&/].*$', '', re.sub(r'\s*\([^)]*\)', '', title)).strip()
+    author_last = author.split()[-1] if author else ''
+    queries = []
+    if clean_title and author:
+        queries.append(f"{clean_title} {author}".strip())
+    if clean_title and author_last and author_last != author:
+        queries.append(f"{clean_title} {author_last}".strip())
+    if title and title != clean_title:
+        queries.append(title)
+    if clean_title and clean_title not in queries:
+        queries.append(clean_title)
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=5.0) as client:
+        for q in queries:
+            try:
+                encoded_q = urllib.parse.quote(q)
+                url = f"https://www.kitapyurdu.com/index.php?route=product/search&filter_name={encoded_q}&fuzzy=0"
+                resp = await client.get(url, headers=ky_headers)
+                if resp.status_code == 200:
+                    isbn = extract_isbn(resp.text)
+                    if isbn:
+                        return {"isbn": isbn, "title": title}
+                    best_url = pick_best_ky_url(clean_title or title, resp.text)
+                    if best_url:
+                        p_resp = await client.get(best_url, headers=ky_headers)
+                        if p_resp.status_code == 200:
+                            p_isbn = extract_isbn(p_resp.text)
+                            if p_isbn:
+                                return {"isbn": p_isbn, "title": title}
+            except Exception:
+                pass
+    return {"isbn": "", "title": title}
 
 @app.get("/api/test-isbn")
 async def test_isbn_endpoint(q: str = "Hamlet William Shakespeare"):
