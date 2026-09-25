@@ -111,21 +111,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ============================================================================
-  // FORM GÖNDERME VE İŞ BAŞLATMA
-  // ============================================================================
-  exportForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  // State for silent auto-retry
+  let currentUsername = '';
+  let currentShelf = 'okuduklari';
+  let autoRetryCount = 0;
+  const MAX_AUTO_RETRIES = 2;
 
-    const rawUsername = usernameInput.value;
-    const username = cleanUsernameInput(rawUsername);
-    const shelf = shelfInput.value || 'okuduklari';
-
-    if (!username) {
-      alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
-      usernameInput.focus();
-      return;
-    }
+  async function startExportProcess(username, shelf) {
+    currentUsername = username;
+    currentShelf = shelf;
 
     // Buton durumunu ayarla
     startBtn.disabled = true;
@@ -156,11 +150,39 @@ document.addEventListener('DOMContentLoaded', () => {
       startEventStream(currentJobId);
 
     } catch (err) {
-      showError(err.message || 'İş başlatılırken bir bağlantı hatası oluştu.');
+      if (autoRetryCount < MAX_AUTO_RETRIES) {
+        autoRetryCount++;
+        if (queueInfoText) queueInfoText.textContent = 'Bağlantı kuruluyor, lütfen bekleyin...';
+        setTimeout(() => {
+          startExportProcess(currentUsername, currentShelf);
+        }, 2000);
+      } else {
+        showError(err.message || 'İş başlatılırken bir bağlantı hatası oluştu.');
+      }
     } finally {
       startBtn.disabled = false;
       startBtn.innerHTML = '<span class="btn-text">KITAPLIGIMI AKTAR</span> <i class="fa-solid fa-arrow-right btn-arrow" aria-hidden="true"></i>';
     }
+  }
+
+  // ============================================================================
+  // FORM GÖNDERME VE İŞ BAŞLATMA
+  // ============================================================================
+  exportForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const rawUsername = usernameInput.value;
+    const username = cleanUsernameInput(rawUsername);
+    const shelf = shelfInput.value || 'okuduklari';
+
+    if (!username) {
+      alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
+      usernameInput.focus();
+      return;
+    }
+
+    autoRetryCount = 0;
+    startExportProcess(username, shelf);
   });
 
   // ============================================================================
@@ -290,6 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanupActiveStreams();
 
       const total = data.total || data.total_count || data.current || data.current_count || 0;
+      autoRetryCount = 0;
       finalCount.textContent = total;
 
       let downloadUrl = data.download_url || `/api/jobs/${currentJobId}/download`;
@@ -308,7 +331,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. HATA DURUMU (FAILED / ERROR)
     if (data.status === 'failed' || data.type === 'error') {
       cleanupActiveStreams();
-      showError(data.error || data.error_message || data.message || 'Bilinmeyen bir hata oluştu.');
+
+      const errMsg = data.error || data.error_message || data.message || 'Bilinmeyen bir hata oluştu.';
+      const isFatal = errMsg.includes('bulunamadı') || errMsg.includes('gizli') || errMsg.includes('Profil');
+
+      // 403 veya geçici bağlantı hatalarında kullanıcıya hata göstermeden sessizce tekrar dene
+      if (!isFatal && autoRetryCount < MAX_AUTO_RETRIES && currentUsername) {
+        autoRetryCount++;
+        statusBadgeText.textContent = 'HAZIRLANIYOR';
+        statusBadge.style.borderColor = 'var(--ink-charcoal)';
+        queueInfoText.textContent = 'Bağlantı kuruluyor, hazırlanıyor...';
+        progressBar.style.width = '5%';
+        progressBar.setAttribute('aria-valuenow', '5');
+
+        setTimeout(() => {
+          startExportProcess(currentUsername, currentShelf);
+        }, 2500);
+        return;
+      }
+
+      showError(errMsg);
     }
   }
 
