@@ -1043,6 +1043,9 @@ body {
   letter-spacing: 1.5px;
   color: #7A6C62;
   text-transform: lowercase;
+  text-decoration: none;
+  cursor: pointer;
+  display: inline-block;
   opacity: 0.85;
   transition: opacity 0.2s ease, color 0.2s ease;
 }
@@ -1050,6 +1053,7 @@ body {
 .creator-brand:hover {
   color: #DDD2C7;
   opacity: 1;
+  text-decoration: none;
 }
 
 /* ------------------------------------------------------------------------------
