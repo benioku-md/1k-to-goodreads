@@ -161,7 +161,14 @@ async def scrape_user_books(job: JobState):
         "1-CIHAZ-KODU": device_code,
         "Referer": "https://1000kitap.com/",
         "Origin": "https://1000kitap.com",
-        "Accept": "application/json, text/plain, */*"
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Linux"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site"
     }
 
     url = "https://api.1000kitap.com/v2/uyeler/kitaplar/liste"
@@ -218,6 +225,11 @@ async def scrape_user_books(job: JobState):
                 raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
             data = response.json()
+
+            # 1000Kitap özel hata yanıtı (örn: Böyle bir okur bulunamadı)
+            if data.get("hata") == 1:
+                msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+                raise Exception(f"1000Kitap Bildirimi: {msg}")
 
             if "bilgi" in data and data["bilgi"] == 0:
                 msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
@@ -411,7 +423,7 @@ async def queue_worker():
                         "type": "queued",
                         "status": "queued",
                         "position": waiting_job.queue_position,
-                        "message": f"Sıradasınız (Önünüzde {waiting_job.queue_position - 1} kişi var)..."
+                        "message": "Sıradasınız, önceki işlem tamamlanınca aktarımınız başlayacak..."
                     })
 
             job.status = "scraping"
