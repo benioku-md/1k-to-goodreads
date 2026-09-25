@@ -157,15 +157,16 @@ async def scrape_user_books(job: JobState):
     """
     device_code = generate_device_code()
     headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Api-V2": "1",
         "1-CIHAZ-KODU": device_code,
         "Referer": "https://1000kitap.com/",
         "Origin": "https://1000kitap.com",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
         "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Linux"',
+        "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-site"
@@ -181,11 +182,6 @@ async def scrape_user_books(job: JobState):
     session = cffi_requests.AsyncSession(impersonate="chrome120")
 
     try:
-        # Cloudflare TLS ve oturum çerezi ısınması (Datacenter IP korumasını aşmak için)
-        try:
-            await session.get("https://1000kitap.com/", timeout=10.0)
-        except Exception:
-            pass
 
         while has_more:
             params = {
@@ -204,13 +200,9 @@ async def scrape_user_books(job: JobState):
                 try:
                     response = await session.get(url, params=params, headers=headers, timeout=25.0)
                     if response.status_code in (403, 429):
-                        # 1000Kitap Cloudflare geçici rate-limit engeli -> Taze cihaz kodu ve kısa bekleme ile kurtarma
-                        await asyncio.sleep(1.2 * (retry + 1))
+                        # 1000Kitap Cloudflare geçici rate-limit engeli -> Taze cihaz kodu ve bekleme
+                        await asyncio.sleep(1.5 * (retry + 1))
                         headers["1-CIHAZ-KODU"] = generate_device_code()
-                        try:
-                            await session.get("https://1000kitap.com/", timeout=5.0)
-                        except Exception:
-                            pass
                         continue
                     break
                 except Exception as net_err:
