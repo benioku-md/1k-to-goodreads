@@ -270,18 +270,27 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // 2. TARAMA DURUMU (SCRAPING / PROGRESS)
-    if (data.status === 'scraping' || data.type === 'progress') {
-      statusBadgeText.textContent = 'TARANIYOR';
-      statusBadge.style.borderColor = 'var(--accent-sage)';
+    // 2. TARAMA VEYA ISBN ÇÖZÜMLEME DURUMU
+    if (data.status === 'scraping' || data.status === 'resolving_isbn' || data.type === 'progress') {
+      if (data.status === 'resolving_isbn') {
+        statusBadgeText.textContent = 'ISBN COZULUYOR';
+        statusBadge.style.borderColor = 'var(--accent-terracotta)';
+      } else {
+        statusBadgeText.textContent = 'TARANIYOR';
+        statusBadge.style.borderColor = 'var(--accent-sage)';
+      }
 
       const current = data.current || data.current_count || 0;
       const total = data.total || data.total_count || 0;
       const percent = data.percent !== undefined ? data.percent : Math.min(99, Math.round((current / (total || 1)) * 100));
 
-      queueInfoText.textContent = total > 0 
-        ? `Kitaplar taranıyor: ${current} / ${total} (%${percent})...`
-        : `Kitaplar taranıyor: ${current} kitap bulundu...`;
+      if (data.status === 'resolving_isbn' || (data.message && data.message.includes('ISBN'))) {
+        queueInfoText.textContent = data.message || `ISBN numaraları doğrulanıyor: ${current} / ${total} (%${percent})...`;
+      } else {
+        queueInfoText.textContent = total > 0 
+          ? `Kitaplar taranıyor: ${current} / ${total} (%${percent})...`
+          : `Kitaplar taranıyor: ${current} kitap bulundu...`;
+      }
 
       countDisplay.textContent = total > 0 ? `${current} / ${total}` : `${current} / ?`;
       percentDisplay.textContent = `%${percent}`;

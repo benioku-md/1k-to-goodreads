@@ -11,6 +11,7 @@ import secrets
 import string
 import time
 import uuid
+import urllib.parse
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -168,7 +169,7 @@ async def scrape_user_books(job: JobState):
     page = 1
     kume = ""
     has_more = True
-    all_books_rows: List[List[str]] = []
+    collected_books: List[dict] = []
     total_estimated = 0
 
     session = cffi_requests.AsyncSession(impersonate="chrome120")
@@ -294,23 +295,24 @@ async def scrape_user_books(job: JobState):
                 if isinstance(durum_btn, dict) and durum_btn.get("okumaSayisi", 0) > 1:
                     read_count = durum_btn["okumaSayisi"]
 
-                # Goodreads CSV Kolonları Eşleştirmesi (Resmî 6 sütun standardı)
-                row = [
-                    sanitize_csv_field(title),                                      # Title (Sütun 1)
-                    sanitize_csv_field(author),                                     # Author (Sütun 2)
-                    "",                                                             # ISBN (Sütun 3)
-                    str(user_rating) if user_rating > 0 else "",                    # My Rating (Sütun 4 - Puan yoksa boş kalır)
-                    date_read,                                                      # Date Read (Sütun 5 - YYYY/MM/DD)
-                    "read"                                                          # Exclusive Shelf (Sütun 6)
-                ]
-                all_books_rows.append(row)
-                job.current_count = len(all_books_rows)
+                book_entry = {
+                    "id": item.get("id"),
+                    "seo_adi": item.get("seo_adi") or "",
+                    "title": title,
+                    "author": author,
+                    "user_rating": user_rating,
+                    "date_read": date_read,
+                    "cover": item.get("resim") or item.get("resimB") or "",
+                    "isbn": ""
+                }
+                collected_books.append(book_entry)
+                job.current_count = len(collected_books)
 
                 # UI canlı bilgi güncellemesi
                 job.last_book = {
                     "title": title,
                     "author": author,
-                    "cover": item.get("resim") or item.get("resimB") or ""
+                    "cover": book_entry["cover"]
                 }
 
             # İlerleme yüzdesi
@@ -339,7 +341,7 @@ async def scrape_user_books(job: JobState):
             # Hız sınırı (Cloudflare ve 1000Kitap güvenlik toleransı için 900ms bekliyoruz)
             await asyncio.sleep(0.90)
 
-        if not all_books_rows:
+        if not collected_books:
             if total_estimated > 0:
                 raise Exception(
                     f"Kullanıcının kütüphanesinde {total_estimated} kitap görünüyor ancak liste içeriği boş dönüyor. "
@@ -351,7 +353,106 @@ async def scrape_user_books(job: JobState):
                 "Rafınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
             )
 
-        # CSV Çıktısını Bellek Üzerinde Oluştur
+        # ======================================================================
+        # 4.2. GOOGLE BOOKS API İLE HIZLI & ASENKRON ISBN ÇÖZÜMLEME
+        # ======================================================================
+        google_api_key = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
+        total_books = len(collected_books)
+
+        job.status = "resolving_isbn"
+        await job.broadcast({
+            "type": "status",
+            "status": "resolving_isbn",
+            "message": "Kitapların ISBN numaraları Google Books üzerinden taranıyor...",
+            "current": 0,
+            "total": total_books,
+            "percent": 0
+        })
+
+        sem = asyncio.Semaphore(5)
+        resolved_count = 0
+
+        async def resolve_isbn_task(book: dict):
+            nonlocal resolved_count
+            title = book["title"]
+            author = book["author"]
+            found_isbn = ""
+
+            if title:
+                clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()
+                clean_a = re.sub(r'[\(\[\{].*?[\)\]\}]', '', author).strip()
+                query = f"intitle:{clean_t}"
+                if clean_a:
+                    query += f"+inauthor:{clean_a}"
+
+                google_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query)}&langRestrict=tr&maxResults=1"
+                if google_api_key:
+                    google_url += f"&key={google_api_key}"
+
+                async with sem:
+                    for _ in range(2):
+                        try:
+                            g_resp = await session.get(google_url, timeout=5.0)
+                            if g_resp.status_code == 200:
+                                g_data = g_resp.json()
+                                items = g_data.get("items", [])
+                                if items:
+                                    vol = items[0].get("volumeInfo", {})
+                                    idents = vol.get("industryIdentifiers", [])
+                                    i13, i10 = "", ""
+                                    for ident in idents:
+                                        itype = ident.get("type", "")
+                                        ival = ident.get("identifier", "").replace("-", "").strip()
+                                        if itype == "ISBN_13":
+                                            i13 = ival
+                                        elif itype == "ISBN_10":
+                                            i10 = ival
+                                    found_isbn = i13 or i10
+                                break
+                            elif g_resp.status_code == 429:
+                                await asyncio.sleep(1.0)
+                                continue
+                            else:
+                                break
+                        except Exception:
+                            await asyncio.sleep(0.5)
+
+            book["isbn"] = found_isbn
+            resolved_count += 1
+            pct = int((resolved_count / total_books) * 100)
+
+            if resolved_count % 3 == 0 or resolved_count == total_books:
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "resolving_isbn",
+                    "message": f"ISBN numaraları doğrulanıyor: {resolved_count} / {total_books} (%{pct})...",
+                    "current": resolved_count,
+                    "total": total_books,
+                    "percent": pct,
+                    "last_book": {
+                        "title": book["title"],
+                        "author": book["author"],
+                        "cover": book["cover"]
+                    }
+                })
+
+        await asyncio.gather(*(resolve_isbn_task(b) for b in collected_books))
+
+        # ======================================================================
+        # 4.3. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA
+        # ======================================================================
+        all_books_rows: List[List[str]] = []
+        for b in collected_books:
+            row = [
+                sanitize_csv_field(b["title"]),
+                sanitize_csv_field(b["author"]),
+                sanitize_csv_field(b["isbn"]),
+                str(b["user_rating"]) if b["user_rating"] > 0 else "",
+                b["date_read"],
+                "read"
+            ]
+            all_books_rows.append(row)
+
         output = io.StringIO()
         writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
         writer.writerow(GOODREADS_CSV_HEADERS)
