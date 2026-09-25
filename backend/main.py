@@ -165,8 +165,7 @@ async def scrape_user_books(job: JobState):
         "1-CIHAZ-KODU": device_code,
         "Referer": "https://1000kitap.com/",
         "Origin": "https://1000kitap.com",
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Accept": "application/json, text/plain, */*"
     }
 
     url = "https://api.1000kitap.com/v2/uyeler/kitaplar/liste"
@@ -179,6 +178,12 @@ async def scrape_user_books(job: JobState):
     session = cffi_requests.AsyncSession(impersonate="chrome120")
 
     try:
+        # Cloudflare TLS ve oturum çerezi ısınması (Datacenter IP korumasını aşmak için)
+        try:
+            await session.get("https://1000kitap.com/", timeout=10.0)
+        except Exception:
+            pass
+
         while has_more:
             params = {
                 "kadi": job.username,
