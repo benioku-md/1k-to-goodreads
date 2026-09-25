@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="theme-color" content="#2D231E">
+  <meta name="description" content="1000Kitap okuma geçmişinizi sıfır veri kaydı ve yüksek gizlilikle Goodreads CSV formatına dönüştürün.">
+  <title>1000Kitap ➔ Goodreads | Okuma Geçmişi Aktarıcı</title>
+  
+  <!-- Font Awesome 6 Free -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Google Fonts: Literata (Kindle Serif) & Silkscreen (Orijinal 8-Bit Pixel) & VT323 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Retro Arka Plan Dokusu ve Üst Piksel Çizgi -->
+  <div class="pixel-top-border" aria-hidden="true"></div>
+
+  <main class="page-wrapper">
+    
+    <!-- Kindle / E-Okuyucu Cihaz Çerçevesi (Masaüstünde Geniş Studio Modu) -->
+    <section class="kindle-device" aria-label="E-Okuyucu Arayüzü">
+      
+      <!-- Üst Durum Çubuğu (Status Bar - Sade & Sağa Yaslı) -->
+      <header class="kindle-status-bar" aria-label="Cihaz Durumu">
+        <div class="status-right">
+          <span id="liveClock" class="status-time">10:42</span>
+          <span class="battery-icon" title="Pil Durumu: %100" aria-label="Pil %100">
+            <span class="battery-level"></span>
+          </span>
+        </div>
+      </header>
+
+      <!-- Kindle Ekran Alanı -->
+      <article class="kindle-screen">
+        
+        <!-- Başlık ve Piksel İllüstrasyon Bölümü (Tam Genişlik & Ortalı) -->
+        <header class="hero-header">
+          <div class="pixel-art-container" aria-hidden="true">
+            <!-- Cozy Pixel Coffee & Book SVG İllüstrasyonu -->
+            <svg class="pixel-art-svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+              <!-- Pixel Fincan Buharı -->
+              <rect x="24" y="6" width="3" height="3" fill="#C85A32" class="steam steam-1" />
+              <rect x="29" y="4" width="3" height="3" fill="#D96B43" class="steam steam-2" />
+              <rect x="34" y="7" width="3" height="3" fill="#C85A32" class="steam steam-3" />
+              
+              <!-- Fincan Gövdesi -->
+              <rect x="18" y="14" width="24" height="18" fill="#F7F4EB" stroke="#2D231E" stroke-width="2" />
+              <rect x="22" y="16" width="16" height="5" fill="#4A7C59" />
+              <rect x="42" y="18" width="6" height="10" fill="none" stroke="#2D231E" stroke-width="2" />
+              <rect x="16" y="32" width="28" height="3" fill="#2D231E" />
+
+              <!-- Pixel Kitaplar Yığını -->
+              <rect x="8" y="46" width="48" height="10" fill="#C85A32" stroke="#2D231E" stroke-width="2" />
+              <rect x="12" y="49" width="36" height="4" fill="#F7F4EB" />
+              <rect x="10" y="48" width="3" height="6" fill="#2D231E" />
+              
+              <rect x="12" y="36" width="40" height="9" fill="#4A7C59" stroke="#2D231E" stroke-width="2" />
+              <rect x="16" y="39" width="30" height="3" fill="#F7F4EB" />
+              <rect x="14" y="38" width="3" height="5" fill="#2D231E" />
+              
+              <!-- Kitap Ayracı -->
+              <polygon points="34,36 38,36 38,44 36,42 34,44" fill="#C85A32" />
+            </svg>
+          </div>
+
+          <h1 class="main-title">
+            <span class="pixel-prefix">1000KITAP ➔ GOODREADS</span>
+            <span class="title-sub">Okuma Geçmişi Aktarıcı</span>
+          </h1>
+
+          <p class="hero-desc">
+            1000Kitap hesabınızdaki tüm okuduğunuz kitapları, verdiğiniz puanları ve okuma tarihlerini saniyeler içinde Goodreads uyumlu resmi <strong>CSV</strong> formatına dönüştürün.
+          </p>
+        </header>
+
+        <!-- 1. BÖLÜM: ORTALANMIŞ AKTARIM PANELİ (Tablet & PC'de Merkezde) -->
+        <div class="centered-export-zone">
+          
+          <!-- Form Kartı (Giriş) -->
+          <section id="formSection" class="retro-card form-card">
+            <div class="card-header-badge">
+              <i class="fa-solid fa-sliders theme-icon"></i>
+              <span class="badge-title">AKTARIM PANELI</span>
+            </div>
+            
+            <form id="exportForm" class="export-form" autocomplete="off">
+              
+              <div class="input-group">
+                <label for="usernameInput" class="input-label">
+                  <i class="fa-solid fa-book-bookmark theme-icon"></i> 1000KITAP KULLANICI ADINIZ:
+                </label>
+                <div class="input-wrapper">
+                  <span class="input-prefix" aria-hidden="true">
+                    <span class="prefix-full">1000kitap.com/</span>
+                    <span class="prefix-short">1k.com/</span>
+                  </span>
+                  <input 
+                    type="text" 
+                    id="usernameInput" 
+                    name="username" 
+                    class="retro-input" 
+                    placeholder="ornek: kitapkurdu" 
+                    required 
+                    spellcheck="false" 
+                    autocapitalize="none"
+                    autocomplete="off"
+                  >
+                </div>
+                <p class="input-hint">Profilinizin ve "Okuduklarım" rafınızın 1000Kitap ayarlarında herkese açık olduğundan emin olun.</p>
+              </div>
+
+              <input type="hidden" id="shelfInput" name="shelf" value="okuduklari">
+
+              <div class="form-actions">
+                <button type="submit" id="startBtn" class="retro-btn btn-primary">
+                  <span class="btn-text">KITAPLIGIMI AKTAR</span>
+                  <i class="fa-solid fa-arrow-right btn-arrow" aria-hidden="true"></i>
+                </button>
+              </div>
+
+            </form>
+
+            <!-- Mini Hızlı Bilgi Şeridi -->
+            <div class="form-footer-tips">
+              <div class="tip-item">
+                <i class="fa-solid fa-check tip-icon"></i>
+                <span>Otomatik 5 Yıldız Puan Eşleme</span>
+              </div>
+              <div class="tip-item">
+                <i class="fa-solid fa-check tip-icon"></i>
+                <span>Goodreads Uyumlu Resmi Book Id Başlığı</span>
+              </div>
+              <div class="tip-item">
+                <i class="fa-solid fa-check tip-icon"></i>
+                <span>Sıfır Log &amp; RAM Temizliği</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Canlı İlerleme ve Kuyruk Kartı (Başlangıçta Gizli) -->
+          <section id="progressSection" class="retro-card progress-card hidden" aria-live="polite">
+            
+            <div class="progress-header">
+              <div class="status-indicator-badge" id="statusBadge">
+                <span class="pulse-dot"></span>
+                <span id="statusBadgeText" class="badge-text">KUYRUGA ALINDI</span>
+              </div>
+              <div class="queue-info-text" id="queueInfoText">Sıranız hesaplanıyor...</div>
+            </div>
+
+            <!-- Pixel İlerleme Çubuğu -->
+            <div class="pixel-progress-bar-container">
+              <div class="pixel-progress-bar" id="progressBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;">
+                <div class="progress-pattern"></div>
+              </div>
+            </div>
+
+            <!-- Sayaç ve Yüzde Bilgisi -->
+            <div class="progress-stats">
+              <div class="stat-box">
+                <span class="stat-label">TARANAN KITAP</span>
+                <span class="stat-value" id="countDisplay">0 / 0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">ILERLEME</span>
+                <span class="stat-value" id="percentDisplay">%0</span>
+              </div>
+            </div>
+
+            <!-- Canlı Taranan Kitap Önizleme Kartı -->
+            <div id="liveBookCard" class="live-book-preview hidden">
+              <div class="preview-label">SU AN TARANAN KITAP:</div>
+              <div class="preview-content">
+                <div class="cover-wrapper" id="bookCoverWrapper">
+                  <i class="fa-solid fa-book-open book-placeholder-icon"></i>
+                  <img id="liveBookCover" src="" alt="Kitap Kapağı" class="book-cover-img hidden" loading="lazy">
+                </div>
+                <div class="book-details">
+                  <div id="liveBookTitle" class="book-title">Kitap Adı</div>
+                  <div id="liveBookAuthor" class="book-author">Yazar Adı</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rate-limit-note">
+              <i class="fa-solid fa-hourglass-half theme-icon"></i> 1000Kitap sunucu kurallarına saygı göstermek için istekler saniyede maks. 2 adet olarak güvenle işlenir.
+            </div>
+
+          </section>
+
+          <!-- Başarı ve İndirme Kartı (Başlangıçta Gizli) -->
+          <section id="completedSection" class="retro-card completed-card hidden" aria-live="polite">
+            <div class="success-banner">
+              <div class="pixel-stamp">BASARILI!</div>
+              <h2 class="success-title">Okuma Geçmişiniz Hazır</h2>
+              <p class="success-desc">
+                Toplam <strong id="finalCount">0</strong> adet kitap başarıyla Goodreads CSV formatına dönüştürüldü.
+              </p>
+            </div>
+
+            <div class="download-action-box">
+              <a id="downloadBtn" href="#" class="retro-btn btn-success" download="1000kitap.csv">
+                <i class="fa-solid fa-cloud-arrow-down"></i>
+                <span class="btn-text">GOODREADS CSV DOSYASINI INDIR</span>
+              </a>
+              <p class="download-hint">Dosya indirilmeye otomatik başlamadıysa yukarıdaki butona tıklayın.</p>
+            </div>
+
+            <div class="restart-box">
+              <button type="button" id="resetBtn" class="retro-btn btn-secondary">
+                <i class="fa-solid fa-rotate-right"></i> Baska Bir Kitaplik Aktar
+              </button>
+            </div>
+          </section>
+
+          <!-- Hata Bildirim Kartı (Başlangıçta Gizli) -->
+          <section id="errorSection" class="retro-card error-card hidden" role="alert">
+            <div class="error-header">
+              <i class="fa-solid fa-triangle-exclamation error-icon"></i>
+              <h3 class="error-title">BIR SORUN OLUSTU</h3>
+            </div>
+            <p id="errorMessage" class="error-text">Hata mesajı detayları burada görünecektir.</p>
+            <div class="error-actions">
+              <button type="button" id="retryBtn" class="retro-btn btn-secondary">
+                <i class="fa-solid fa-rotate-right"></i> Tekrar Dene
+              </button>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- 2. BÖLÜM: SAĞA VE SOLA PAYLAŞTIRILMIŞ REHBER & BİLGİ ALANI (980px+ Ekranlarda Yan Yana) -->
+        <div class="bottom-split-zone">
+          
+          <!-- SOL SÜTUN: Goodreads'e İçe Aktarma Rehberi -->
+          <section class="retro-card guide-card" aria-labelledby="guideHeading">
+            <div class="card-header-badge">
+              <i class="fa-solid fa-list-check theme-icon"></i>
+              <span class="badge-title">GOODREADS'E YUKLEME REHBERI</span>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="step-item">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                  <strong>Goodreads'e Giriş Yapın:</strong>
+                  <span>Hesabınıza giriş yapıp menüden <mark>My Books</mark> sekmesine gidin.</span>
+                </div>
+              </li>
+              <li class="step-item">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                  <strong>İçe Aktarma Sayfasını Açın:</strong>
+                  <span>Sol menü altındaki <mark>Import and export</mark> bağlantısına tıklayın.</span>
+                </div>
+              </li>
+              <li class="step-item">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                  <strong>CSV Dosyasını Seçin:</strong>
+                  <span>İndirdiğiniz dosyayı seçip <mark>Import Books</mark> butonuna basın.</span>
+                </div>
+              </li>
+              <li class="step-item">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                  <strong>Hazır!</strong>
+                  <span>Goodreads kitaplarınızı, puanlarınızı ve tarihlerinizi kütüphanenize ekleyecektir.</span>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-cta">
+              <a href="https://www.goodreads.com/review/import" target="_blank" rel="noopener noreferrer" class="retro-btn btn-outline">
+                Goodreads Ice Aktarma Sayfasini Ac <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              </a>
+            </div>
+          </section>
+
+          <!-- SAĞ SÜTUN: Puan Dönüşümü & Gizlilik Bilgileri -->
+          <div class="side-info-stack">
+            
+            <!-- Puan Eşleştirme Bilgisi -->
+            <section class="retro-card rating-info-card">
+              <div class="card-header-badge">
+                <span class="badge-icon">⭐</span>
+                <span class="badge-title">PUANLAMA SISTEMI DONUSUMU</span>
+              </div>
+              <p class="rating-info-desc">
+                1000Kitap <strong>10 puan</strong> üzerinden değerlendirme yaparken, Goodreads <strong>5 yıldız</strong> kullanır. Puanlarınız şu adil formülle çevrilir:
+              </p>
+              <div class="rating-matrix">
+                <div class="rating-pill">
+                  <span class="rating-range">9-10</span>
+                  <span class="rating-arrow">➔</span>
+                  <span class="rating-stars">⭐⭐⭐⭐⭐</span>
+                  <span class="rating-score">(5)</span>
+                </div>
+                <div class="rating-pill">
+                  <span class="rating-range">7-8</span>
+                  <span class="rating-arrow">➔</span>
+                  <span class="rating-stars">⭐⭐⭐⭐</span>
+                  <span class="rating-score">(4)</span>
+                </div>
+                <div class="rating-pill">
+                  <span class="rating-range">5-6</span>
+                  <span class="rating-arrow">➔</span>
+                  <span class="rating-stars">⭐⭐⭐</span>
+                  <span class="rating-score">(3)</span>
+                </div>
+                <div class="rating-pill">
+                  <span class="rating-range">3-4</span>
+                  <span class="rating-arrow">➔</span>
+                  <span class="rating-stars">⭐⭐</span>
+                  <span class="rating-score">(2)</span>
+                </div>
+                <div class="rating-pill">
+                  <span class="rating-range">1-2</span>
+                  <span class="rating-arrow">➔</span>
+                  <span class="rating-stars">⭐</span>
+                  <span class="rating-score">(1)</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- Gizlilik ve Mahremiyet Güvencesi (Zero-Log & Zero-Database) -->
+            <section class="retro-card privacy-card" aria-label="Gizlilik Taahhüdü">
+              <div class="card-header-badge">
+                <i class="fa-solid fa-shield-halved theme-icon"></i>
+                <span class="badge-title">MAHREMIYET</span>
+              </div>
+              <ul class="privacy-list">
+                <li>
+                  <strong>Sıfır Veri Tabanı:</strong> Hiçbir veri tabanı veya sunucu diski kullanılmaz.
+                </li>
+                <li>
+                  <strong>Sıfır Log:</strong> IP adresleri ve kullanıcı adları sunucu loglarında tutulmaz.
+                </li>
+                <li>
+                  <strong>Parolasız &amp; Güvenli:</strong> Yalnızca kullanıcının açık kütüphanesi taranır, parola istenmez. Şayet kullanıcının okudukları gizliyse, veriler çekilemez.
+                </li>
+                <li>
+                  <strong>Bellekte Tutma Süresi:</strong> CSV'niz yalnızca 15 dakika boyunca indirilebilir kalır. Süre dolduğunda bellekten tamamen silinir.
+                </li>
+              </ul>
+            </section>
+
+          </div>
+
+        </div>
+
+      </article>
+
+      <!-- Cihaz Alt Bezel (İmza) -->
+      <footer class="kindle-bezel-bottom">
+        <div class="creator-brand">benioku_md yaptı</div>
+      </footer>
+
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
