@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const liveBookTitle = document.getElementById('liveBookTitle');
   const liveBookAuthor = document.getElementById('liveBookAuthor');
   const bookCoverWrapper = document.getElementById('bookCoverWrapper');
+  const bookPlaceholderIcon = document.getElementById('bookPlaceholderIcon');
 
   // Tamamlanma & İndirme Elemanları
   const finalCount = document.getElementById('finalCount');
@@ -203,6 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     liveBookCard.classList.add('hidden');
     liveBookCover.classList.add('hidden');
+    liveBookCover.src = '';
+    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
   }
 
   // ============================================================================
@@ -326,6 +329,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lastBook.cover) {
           liveBookCover.src = lastBook.cover;
           liveBookCover.classList.remove('hidden');
+          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.add('hidden');
+        } else {
+          liveBookCover.classList.add('hidden');
+          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
         }
         liveBookCard.classList.remove('hidden');
       }

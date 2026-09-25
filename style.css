@@ -745,27 +745,49 @@ body {
 }
 
 .cover-wrapper {
-  width: 42px;
-  height: 60px;
+  position: relative;
+  width: 44px;
+  height: 62px;
   border: var(--pixel-border);
   background: #FFF;
   border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
 }
 
-.book-cover-placeholder {
-  font-size: 1.3rem;
+.book-placeholder-icon {
+  font-size: 1.25rem;
+  color: var(--ink-muted);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.book-placeholder-icon.hidden {
+  display: none !important;
 }
 
 .book-cover-img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
+  z-index: 2;
+  background: #FFF;
+}
+
+.book-cover-img.hidden {
+  display: none !important;
 }
 
 .book-details {
