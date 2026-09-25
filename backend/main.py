@@ -505,8 +505,8 @@ async def scrape_user_books(job: JobState):
                 "percent": 0
             })
 
-            # Cloudflare bot filtresine takılmamak için 3 paralel ve 200ms güvenlik aralığı
-            sem_ky = asyncio.Semaphore(3)
+            # Cloudflare bot filtresine takılmadan maksimum hız: 5 paralel ve 100ms güvenlik aralığı
+            sem_ky = asyncio.Semaphore(5)
             ky_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -622,7 +622,7 @@ async def scrape_user_books(job: JobState):
                                     await asyncio.sleep(0.5)
 
                             # Cloudflare'ı tetiklememek için minik güvenlik payı
-                            await asyncio.sleep(0.20)
+                            await asyncio.sleep(0.10)
 
                 if found_isbn:
                     book["isbn"] = found_isbn
