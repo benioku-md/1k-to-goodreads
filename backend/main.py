@@ -223,8 +223,7 @@ async def scrape_user_books(job: JobState):
     """
     1000Kitap API'sini saniyede maksimum 2 istek hız sınırlamasıyla tarar,
     kitapları ayrıştırır ve UTF-8 BOM'lu Goodreads CSV'si üretir.
-    Eşzamanlı boru hattı (Producer-Consumer): Kitaplar çekilir çekilmez 
-    Kitapyurdu işçilerine aktarılarak eşzamanlı olarak ISBN'leri çözümlenir.
+    Eşzamanlı 10 iş parçacıklı hızlı Kitapyurdu motoru ile anında ISBN çözer.
     """
     device_code = generate_device_code()
     headers = {
@@ -306,11 +305,11 @@ async def scrape_user_books(job: JobState):
                                         if p_isbn:
                                             found_isbn = p_isbn
                                             break
-                            await asyncio.sleep(0.05)
+                            await asyncio.sleep(0.02)
                         except Exception:
                             pass
 
-                    # Yabanci datacenter engeli varsa (Render ortami), AltunHOST TR IP kopyasina sor
+                    # Yabanci datacenter engeli varsa (Render ortami), AltunHOST TR IP uzerinden aninda coz
                     if not found_isbn and cf_blocked:
                         try:
                             b_url = "http://5.175.136.60:8085/api/resolve-isbn"
@@ -326,7 +325,10 @@ async def scrape_user_books(job: JobState):
                 resolved_count += 1
                 isbn_queue.task_done()
 
-                # Her kitap cozuldugunde anlik canli durum guncellemesi gonder
+                # Her 10 kitapta 1 gorsel gondererek sunucuyu ve tarayiciyi rahatlat
+                include_cover = (resolved_count % 10 == 0) or (resolved_count == total_books)
+                cover_to_send = book.get("cover", "") if include_cover else ""
+
                 if total_books > 0:
                     pct_isbn = min(99, int((resolved_count / total_books) * 100))
                     await job.broadcast({
@@ -336,11 +338,13 @@ async def scrape_user_books(job: JobState):
                         "current": resolved_count,
                         "total": total_books,
                         "percent": pct_isbn,
-                        "last_book": {"title": raw_title, "author": raw_author, "cover": book.get("cover", "")}
+                        "last_book": {"title": raw_title, "author": raw_author, "cover": cover_to_send}
                     })
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as ky_client:
-            ky_workers = [asyncio.create_task(ky_worker(ky_client)) for _ in range(5)]
+        ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
+            # 10 eszamanli paralel isci ile ultra hizli tarama
+            ky_workers = [asyncio.create_task(ky_worker(ky_client)) for _ in range(10)]
 
             while has_more:
                 params = {
@@ -501,7 +505,7 @@ async def scrape_user_books(job: JobState):
             total_books = len(collected_books)
 
             # İşçilere bitiş sinyali gönder ve hepsinin tamamlanmasını bekle
-            for _ in range(5):
+            for _ in range(10):
                 await isbn_queue.put(None)
             await asyncio.gather(*ky_workers)
 
@@ -777,6 +781,7 @@ async def resolve_isbn_api(title: str, author: str = ""):
             except Exception:
                 pass
     return {"isbn": "", "title": title}
+
 
 @app.get("/api/test-isbn")
 async def test_isbn_endpoint(q: str = "Hamlet William Shakespeare"):

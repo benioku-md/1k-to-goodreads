@@ -4,9 +4,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Canlı Backend API URL'i (GitHub Pages üzerindeyken Render'a bağlanır, yereldeyken göreceli çalışır)
+  // Canlı Backend API URL'i (GitHub Pages üzerindeyken AltunHost HTTPS tüneline bağlanır, yereldeyken göreceli çalışır)
   const API_BASE_URL = window.location.hostname.includes('github.io')
-    ? 'https://onek-to-goodreads.onrender.com'
+    ? 'https://knight-analytical-fork-sessions.trycloudflare.com'
     : '';
 
   // ============================================================================
@@ -318,8 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lastBook.cover) {
           liveBookCover.src = lastBook.cover;
           liveBookCover.classList.remove('hidden');
-        } else {
-          liveBookCover.classList.add('hidden');
         }
         liveBookCard.classList.remove('hidden');
       }
@@ -376,12 +374,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================================
   // OTOMATİK DOSYA İNDİRME
   // ============================================================================
-  function triggerAutoDownload(url) {
+  async function triggerAutoDownload(url) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = '1000kitap.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 1000);
+        return;
+      }
+    } catch (e) {
+      console.warn('Otomatik blob indirme deneniyor:', e);
+    }
     try {
       const a = document.createElement('a');
       a.href = url;
       a.download = '1000kitap.csv';
-      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
