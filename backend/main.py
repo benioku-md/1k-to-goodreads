@@ -171,7 +171,7 @@ async def scrape_user_books(job: JobState):
     all_books_rows: List[List[str]] = []
     total_estimated = 0
 
-    session = cffi_requests.AsyncSession()
+    session = cffi_requests.AsyncSession(impersonate="chrome120")
 
     try:
         while has_more:
@@ -198,7 +198,7 @@ async def scrape_user_books(job: JobState):
                                 await session.close()
                             except Exception:
                                 pass
-                            session = cffi_requests.AsyncSession()
+                            session = cffi_requests.AsyncSession(impersonate="chrome120")
                             headers["1-CIHAZ-KODU"] = generate_device_code()
                             continue
                         break
