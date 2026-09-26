@@ -113,10 +113,32 @@
                     autocomplete="off"
                   >
                 </div>
-                <p class="input-hint">Profilinizin ve "Okuduklarım" rafınızın 1000Kitap ayarlarında herkese açık olduğundan emin olun.</p>
+                <p class="input-hint">Profilinizin ve ilgili raflarınızın 1000Kitap ayarlarında herkese açık olduğundan emin olun.</p>
               </div>
 
-              <input type="hidden" id="shelfInput" name="shelf" value="okuduklari">
+              <!-- Raf Seçimi -->
+              <div class="input-group">
+                <label class="input-label">
+                  <i class="fa-solid fa-layer-group theme-icon"></i> AKTARILACAK RAFLAR
+                </label>
+                <div class="shelf-radio-group" role="radiogroup" aria-label="Aktarılacak Raflar">
+                  <label class="shelf-radio-card" for="shelf-all">
+                    <input type="radio" id="shelf-all" name="shelf" value="hepsi" checked class="shelf-radio-input">
+                    <span class="shelf-radio-custom" aria-hidden="true"></span>
+                    <span class="shelf-radio-text">Tüm Kütüphane</span>
+                  </label>
+                  <label class="shelf-radio-card" for="shelf-read">
+                    <input type="radio" id="shelf-read" name="shelf" value="okuduklari" class="shelf-radio-input">
+                    <span class="shelf-radio-custom" aria-hidden="true"></span>
+                    <span class="shelf-radio-text">Okuduklarım</span>
+                  </label>
+                  <label class="shelf-radio-card" for="shelf-want">
+                    <input type="radio" id="shelf-want" name="shelf" value="okuyacaklari" class="shelf-radio-input">
+                    <span class="shelf-radio-custom" aria-hidden="true"></span>
+                    <span class="shelf-radio-text">Okumak İstediklerim</span>
+                  </label>
+                </div>
+              </div>
 
               <div class="form-actions">
                 <button type="submit" id="startBtn" class="retro-btn btn-primary">

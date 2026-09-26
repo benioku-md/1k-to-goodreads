@@ -481,6 +481,115 @@ body {
   line-height: 1.4;
 }
 
+/* ------------------------------------------------------------------------------
+   Raf Seçim Butonları (Radio Group)
+   ------------------------------------------------------------------------------ */
+.shelf-radio-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.shelf-radio-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFF;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  padding: 11px 12px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--pixel-shadow-sm);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.shelf-radio-card:hover {
+  background: var(--bg-parchment-light);
+  transform: translateY(-1px);
+}
+
+.shelf-radio-card:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--pixel-shadow-pressed);
+}
+
+.shelf-radio-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.shelf-radio-input:focus-visible + .shelf-radio-custom {
+  outline: 2px solid var(--accent-terracotta);
+  outline-offset: 2px;
+}
+
+.shelf-radio-custom {
+  width: 18px;
+  height: 18px;
+  border: var(--pixel-border);
+  border-radius: 50%;
+  background: #FFF;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.shelf-radio-custom::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-terracotta);
+  display: none;
+}
+
+.shelf-radio-input:checked + .shelf-radio-custom {
+  border-color: var(--accent-terracotta);
+}
+
+.shelf-radio-input:checked + .shelf-radio-custom::after {
+  display: block;
+}
+
+.shelf-radio-card:has(.shelf-radio-input:checked),
+.shelf-radio-card.is-selected {
+  background: var(--accent-terracotta-light);
+  border-color: var(--accent-terracotta);
+  box-shadow: 2px 2px 0px var(--accent-terracotta);
+}
+
+.shelf-radio-text {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink-espresso);
+  line-height: 1.25;
+}
+
+.shelf-radio-card:has(.shelf-radio-input:checked) .shelf-radio-text,
+.shelf-radio-card.is-selected .shelf-radio-text {
+  color: var(--accent-terracotta-hover);
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .shelf-radio-group {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .shelf-radio-card {
+    padding: 12px 14px;
+  }
+}
+
 /* Buton Stilleri */
 .form-actions {
   margin-top: 6px;

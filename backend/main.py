@@ -54,10 +54,10 @@ GOODREADS_CSV_HEADERS = [
 
 class ExportRequest(BaseModel):
     username: str
-    shelf: Optional[str] = "okuduklari"
+    shelf: Optional[str] = "hepsi"
 
 class JobState:
-    def __init__(self, job_id: str, username: str, shelf: str = "okuduklari"):
+    def __init__(self, job_id: str, username: str, shelf: str = "hepsi"):
         self.job_id: str = job_id
         self.username: str = username
         self.shelf: str = shelf
@@ -356,170 +356,189 @@ async def scrape_user_books(job: JobState):
                     "last_book": job.last_book
                 })
 
+        shelves_to_process = []
+        if job.shelf == "okuyacaklari":
+            shelves_to_process = [("okuyacaklari", "to-read", "Okumak İstediklerim")]
+        elif job.shelf == "okuduklari":
+            shelves_to_process = [("okuduklari", "read", "Okuduklarım")]
+        else:  # "hepsi"
+            shelves_to_process = [("okuduklari", "read", "Okuduklarım"), ("okuyacaklari", "to-read", "Okumak İstediklerim")]
+
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
             # 10 eszamanli paralel isci ile ultra hizli tarama
             ky_workers = [asyncio.create_task(ky_worker(ky_client)) for _ in range(10)]
 
-            while has_more:
-                params = {
-                    "kadi": job.username,
-                    "raf": job.shelf,
-                    "sayfa": page,
-                    "appVersion": "2.60.60",
-                    "os": "android",
-                    "hl": "tr"
-                }
-                if kume:
-                    params["kume"] = kume
+            for shelf_idx, (shelf_slug, goodreads_shelf, shelf_display) in enumerate(shelves_to_process):
+                page = 1
+                kume = ""
+                has_more = True
 
-                response = None
-                for retry in range(2):
-                    try:
-                        response = await session.get(url, params=params, headers=headers, timeout=6.0)
-                        if response.status_code in (403, 429):
-                            if retry == 0:
-                                await asyncio.sleep(1.0)
-                                try:
-                                    await session.close()
-                                except Exception:
-                                    pass
-                                session = cffi_requests.AsyncSession(impersonate="chrome120")
-                                headers["1-CIHAZ-KODU"] = generate_device_code()
-                                continue
+                while has_more:
+                    params = {
+                        "kadi": job.username,
+                        "raf": shelf_slug,
+                        "sayfa": page,
+                        "appVersion": "2.60.60",
+                        "os": "android",
+                        "hl": "tr"
+                    }
+                    if kume:
+                        params["kume"] = kume
+
+                    response = None
+                    for retry in range(2):
+                        try:
+                            response = await session.get(url, params=params, headers=headers, timeout=6.0)
+                            if response.status_code in (403, 429):
+                                if retry == 0:
+                                    await asyncio.sleep(1.0)
+                                    try:
+                                        await session.close()
+                                    except Exception:
+                                        pass
+                                    session = cffi_requests.AsyncSession(impersonate="chrome120")
+                                    headers["1-CIHAZ-KODU"] = generate_device_code()
+                                    continue
+                                break
                             break
-                        break
-                    except Exception as net_err:
-                        if retry == 1:
-                            raise net_err
-                        await asyncio.sleep(0.5)
+                        except Exception as net_err:
+                            if retry == 1:
+                                raise net_err
+                            await asyncio.sleep(0.5)
 
-                if response is None or response.status_code != 200:
-                    code = response.status_code if response else "Bilinmiyor"
-                    if code == 404:
-                        raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
-                    raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
+                    if response is None or response.status_code != 200:
+                        code = response.status_code if response else "Bilinmiyor"
+                        if code == 404:
+                            raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+                        raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
-                data = response.json()
+                    data = response.json()
 
-                if data.get("hata") == 1:
-                    msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
-                    raise Exception(f"1000Kitap Bildirimi: {msg}")
+                    if data.get("hata") == 1:
+                        msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+                        raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-                if "bilgi" in data and data["bilgi"] == 0:
-                    msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
-                    raise Exception(f"1000Kitap Bildirimi: {msg}")
+                    if "bilgi" in data and data["bilgi"] == 0:
+                        msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
+                        raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-                sonuc = data.get("_sonuc")
-                if not sonuc:
-                    raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
+                    sonuc = data.get("_sonuc")
+                    if not sonuc:
+                        raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
 
-                hata_metni = sonuc.get("hataMetni")
-                if hata_metni:
-                    hata_lower = str(hata_metni).lower()
-                    if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
-                        raise Exception(
-                            "Bu kullanıcının 'Okudukları' rafı gizlidir (Sadece okurun kendisi görebilir). "
-                            "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
-                            "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
-                        )
-                    else:
-                        raise Exception(f"1000Kitap Bildirimi: {hata_metni}")
+                    hata_metni = sonuc.get("hataMetni")
+                    if hata_metni:
+                        hata_lower = str(hata_metni).lower()
+                        if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
+                            if len(shelves_to_process) > 1:
+                                break
+                            raise Exception(
+                                f"Bu kullanıcının '{shelf_display}' rafı gizlidir (Sadece okurun kendisi görebilir). "
+                                "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
+                                "ilgili rafı herkese açık yapıp tekrar deneyin."
+                            )
+                        else:
+                            raise Exception(f"1000Kitap Bildirimi: {hata_metni}")
 
-                if page == 1:
-                    kitaplik_bilgiler = sonuc.get("kitaplikBilgiler", {})
-                    raflar = kitaplik_bilgiler.get("raflar", [])
-                    for r in raflar:
-                        if r.get("seo") == job.shelf or r.get("baslik", "").lower() == "okudukları":
-                            bilgi_txt = r.get("bilgi", "")
-                            digits = re.findall(r"\d+", bilgi_txt.replace(".", "").replace(",", ""))
+                    if shelf_idx == 0 and page == 1:
+                        kitaplik_bilgiler = sonuc.get("kitaplikBilgiler", {})
+                        raflar = kitaplik_bilgiler.get("raflar", [])
+                        wanted_slugs = {s[0] for s in shelves_to_process}
+                        total_from_shelves = 0
+                        for r in raflar:
+                            if r.get("seo") in wanted_slugs:
+                                bilgi_txt = r.get("bilgi", "")
+                                digits = re.findall(r"\d+", bilgi_txt.replace(".", "").replace(",", ""))
+                                if digits:
+                                    total_from_shelves += int(digits[0])
+                        if total_from_shelves > 0:
+                            total_estimated = total_from_shelves
+                        elif total_estimated == 0 and sonuc.get("baslikMini"):
+                            digits = re.findall(r"\d+", str(sonuc.get("baslikMini")).replace(".", "").replace(",", ""))
                             if digits:
                                 total_estimated = int(digits[0])
-                            break
-                    if total_estimated == 0 and sonuc.get("baslikMini"):
-                        digits = re.findall(r"\d+", str(sonuc.get("baslikMini")).replace(".", "").replace(",", ""))
-                        if digits:
-                            total_estimated = int(digits[0])
 
-                    job.total_count = total_estimated
+                        job.total_count = total_estimated
 
-                raw_list = sonuc.get("liste", [])
-                if not raw_list:
-                    break
+                    raw_list = sonuc.get("liste", [])
+                    if not raw_list:
+                        break
 
-                for item in raw_list:
-                    if item.get("renderTuru") == "reklam" or not item.get("adi"):
-                        continue
+                    for item in raw_list:
+                        if item.get("renderTuru") == "reklam" or not item.get("adi"):
+                            continue
 
-                    title = item.get("adi", "").strip()
-                    author = item.get("yazarAdi") or item.get("ilkYazar") or ""
-                    if not author and item.get("yazarlar"):
-                        author = item["yazarlar"][0].get("adi", "")
+                        title = item.get("adi", "").strip()
+                        author = item.get("yazarAdi") or item.get("ilkYazar") or ""
+                        if not author and item.get("yazarlar"):
+                            author = item["yazarlar"][0].get("adi", "")
 
-                    ek_bilgi = item.get("ekBilgi", "")
-                    date_read = parse_date(ek_bilgi)
-                    user_rating = parse_rating(ek_bilgi)
+                        ek_bilgi = item.get("ekBilgi", "")
+                        if goodreads_shelf == "read":
+                            date_read = parse_date(ek_bilgi)
+                            user_rating = parse_rating(ek_bilgi)
+                        else:
+                            date_read = ""
+                            user_rating = 0
 
-                    book_entry = {
-                        "id": item.get("id"),
-                        "seo_adi": item.get("seo_adi") or "",
-                        "title": title,
-                        "author": author,
-                        "user_rating": user_rating,
-                        "date_read": date_read,
-                        "cover": item.get("resim") or item.get("resimB") or "",
-                        "isbn": ""
-                    }
-                    collected_books.append(book_entry)
-                    job.current_count = len(collected_books)
-                    job.last_book = {
-                        "title": title,
-                        "author": author,
-                        "cover": book_entry["cover"]
-                    }
+                        book_entry = {
+                            "id": item.get("id"),
+                            "seo_adi": item.get("seo_adi") or "",
+                            "title": title,
+                            "author": author,
+                            "user_rating": user_rating,
+                            "date_read": date_read,
+                            "exclusive_shelf": goodreads_shelf,
+                            "cover": item.get("resim") or item.get("resimB") or "",
+                            "isbn": ""
+                        }
+                        collected_books.append(book_entry)
+                        job.current_count = len(collected_books)
+                        job.last_book = {
+                            "title": title,
+                            "author": author,
+                            "cover": book_entry["cover"]
+                        }
 
-                    # Eşzamanlı boru hattı: Kitabı bekletmeden anında Kitapyurdu işçi havuzuna fırlat
-                    await isbn_queue.put(book_entry)
+                        # Eşzamanlı boru hattı: Kitabı bekletmeden anında Kitapyurdu işçi havuzuna fırlat
+                        await isbn_queue.put(book_entry)
 
-                if job.total_count > 0:
-                    pct = int((job.current_count / job.total_count) * 100)
-                    job.percent = min(99, pct)
-                else:
-                    job.percent = min(95, page * 10)
+                    if job.total_count > 0:
+                        pct = int((job.current_count / job.total_count) * 100)
+                        job.percent = min(99, pct)
+                    else:
+                        job.percent = min(95, len(collected_books) * 5)
 
-                job.message = f"Kitaplar taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
-                await job.broadcast({
-                    "type": "progress",
-                    "status": "scraping",
-                    "message": job.message,
-                    "current": job.current_count,
-                    "total": job.total_count,
-                    "percent": job.percent,
-                    "last_book": job.last_book
-                })
+                    job.message = f"{shelf_display} taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
+                    await job.broadcast({
+                        "type": "progress",
+                        "status": "scraping",
+                        "message": job.message,
+                        "current": job.current_count,
+                        "total": job.total_count,
+                        "percent": job.percent,
+                        "last_book": job.last_book
+                    })
 
-                has_more = bool(sonuc.get("hasMore", False))
-                kume = str(sonuc.get("kume", ""))
-                page += 1
+                    has_more = bool(sonuc.get("hasMore", False))
+                    kume = str(sonuc.get("kume", ""))
+                    page += 1
 
-                if not has_more or not raw_list:
-                    break
+                    if not has_more or not raw_list:
+                        break
 
-                await asyncio.sleep(0.90)
+                    await asyncio.sleep(0.90)
 
             if not collected_books:
-                if total_estimated > 0:
-                    raise Exception(
-                        f"Kullanıcının kütüphanesinde {total_estimated} kitap görünüyor ancak liste içeriği boş dönüyor. "
-                        "Rafınız gizli olabilir. Lütfen 1000Kitap Profil Ayarları ➔ Gizlilik menüsünden "
-                        "'Okuduklarım' rafını herkese açık yapıp tekrar deneyin."
-                    )
                 raise Exception(
-                    "Bu kullanıcının 'okudukları' rafında taranacak kitap bulunamadı. "
-                    "Rafınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
+                    "Seçilen raflarda taranacak kitap bulunamadı. "
+                    "Raflarınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
                 )
 
             total_books = len(collected_books)
+            if job.total_count < total_books:
+                job.total_count = total_books
 
             # İşçilere bitiş sinyali gönder ve hepsinin tamamlanmasını bekle
             for _ in range(10):
@@ -535,9 +554,9 @@ async def scrape_user_books(job: JobState):
                 sanitize_csv_field(b["title"]),
                 sanitize_csv_field(b["author"]),
                 sanitize_csv_field(b["isbn"]),
-                str(b["user_rating"]) if b["user_rating"] > 0 else "",
-                b["date_read"],
-                "read"
+                str(b["user_rating"]) if b.get("user_rating", 0) > 0 else "",
+                b.get("date_read", ""),
+                b.get("exclusive_shelf", "read")
             ]
             all_books_rows.append(row)
 
@@ -684,7 +703,7 @@ async def create_export_job(payload: ExportRequest):
         raise HTTPException(status_code=400, detail="Lütfen geçerli bir 1000Kitap kullanıcı adı girin.")
 
     job_id = uuid.uuid4().hex
-    job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "okuduklari")
+    job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi")
     JOBS[job_id] = job
 
     ACTIVE_QUEUE_LIST.append(job_id)

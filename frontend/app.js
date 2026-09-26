@@ -23,8 +23,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // Form Elemanları
   const exportForm = document.getElementById('exportForm');
   const usernameInput = document.getElementById('usernameInput');
-  const shelfInput = document.getElementById('shelfInput');
   const startBtn = document.getElementById('startBtn');
+  const shelfRadios = document.querySelectorAll('input[name="shelf"]');
+
+  function getSelectedShelf() {
+    const checked = document.querySelector('input[name="shelf"]:checked');
+    return checked ? checked.value : 'hepsi';
+  }
+
+  function updateRadioCardStyles() {
+    shelfRadios.forEach(radio => {
+      const card = radio.closest('.shelf-radio-card');
+      if (card) {
+        if (radio.checked) {
+          card.classList.add('is-selected');
+        } else {
+          card.classList.remove('is-selected');
+        }
+      }
+    });
+  }
+  shelfRadios.forEach(radio => {
+    radio.addEventListener('change', updateRadioCardStyles);
+  });
+  updateRadioCardStyles();
 
   // İlerleme & Kuyruk Elemanları
   const statusBadge = document.getElementById('statusBadge');
@@ -114,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // State for silent auto-retry
   let currentUsername = '';
-  let currentShelf = 'okuduklari';
+  let currentShelf = 'hepsi';
   let autoRetryCount = 0;
   const MAX_AUTO_RETRIES = 3;
 
@@ -175,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const rawUsername = usernameInput.value;
     const username = cleanUsernameInput(rawUsername);
-    const shelf = shelfInput.value || 'okuduklari';
+    const shelf = getSelectedShelf();
 
     if (!username) {
       alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
@@ -425,6 +447,11 @@ document.addEventListener('DOMContentLoaded', () => {
   resetBtn.addEventListener('click', () => {
     cleanupActiveStreams();
     usernameInput.value = '';
+    const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');
+    if (defaultRadio) {
+      defaultRadio.checked = true;
+      updateRadioCardStyles();
+    }
     showSection(formSection);
     usernameInput.focus();
   });
