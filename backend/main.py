@@ -49,7 +49,7 @@ MONTH_MAP = {
 }
 
 GOODREADS_CSV_HEADERS = [
-    "Title", "Author", "ISBN", "My Rating", "Date Read", "Exclusive Shelf"
+    "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf"
 ]
 
 class ExportRequest(BaseModel):
@@ -550,13 +550,15 @@ async def scrape_user_books(job: JobState):
         # ======================================================================
         all_books_rows: List[List[str]] = []
         for b in collected_books:
+            is_to_read = (b.get("exclusive_shelf") == "to-read")
             row = [
                 sanitize_csv_field(b["title"]),
                 sanitize_csv_field(b["author"]),
                 sanitize_csv_field(b["isbn"]),
-                str(b["user_rating"]) if b.get("user_rating", 0) > 0 else "",
-                b.get("date_read", ""),
-                b.get("exclusive_shelf", "read")
+                str(b["user_rating"]) if (not is_to_read and b.get("user_rating", 0) > 0) else "",
+                b.get("date_read", "") if not is_to_read else "",
+                "to-read" if is_to_read else "",
+                "to-read" if is_to_read else "read"
             ]
             all_books_rows.append(row)
 
