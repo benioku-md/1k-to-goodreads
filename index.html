@@ -126,21 +126,31 @@
                 <label class="input-label">
                   <i class="fa-solid fa-layer-group theme-icon"></i> AKTARILACAK RAFLAR
                 </label>
-                <div class="shelf-radio-group" role="radiogroup" aria-label="Aktarılacak Raflar">
-                  <label class="shelf-radio-card" for="shelf-all">
-                    <input type="radio" id="shelf-all" name="shelf" value="hepsi" checked class="shelf-radio-input">
-                    <span class="shelf-radio-custom" aria-hidden="true"></span>
-                    <span class="shelf-radio-text">Tüm Kütüphane</span>
-                  </label>
-                  <label class="shelf-radio-card" for="shelf-read">
-                    <input type="radio" id="shelf-read" name="shelf" value="okuduklari" class="shelf-radio-input">
-                    <span class="shelf-radio-custom" aria-hidden="true"></span>
-                    <span class="shelf-radio-text">Okuduklarım</span>
-                  </label>
-                  <label class="shelf-radio-card" for="shelf-want">
-                    <input type="radio" id="shelf-want" name="shelf" value="okuyacaklari" class="shelf-radio-input">
-                    <span class="shelf-radio-custom" aria-hidden="true"></span>
-                    <span class="shelf-radio-text">Okumak İstediklerim</span>
+                <div class="shelf-options-wrapper">
+                  <div class="shelf-radio-group" role="radiogroup" aria-label="Aktarılacak Raflar">
+                    <label class="shelf-radio-card" for="shelf-all">
+                      <input type="radio" id="shelf-all" name="shelf" value="hepsi" checked class="shelf-radio-input">
+                      <span class="shelf-radio-custom" aria-hidden="true"></span>
+                      <span class="shelf-radio-text">Tüm Kütüphane</span>
+                    </label>
+                    <label class="shelf-radio-card" for="shelf-read">
+                      <input type="radio" id="shelf-read" name="shelf" value="okuduklari" class="shelf-radio-input">
+                      <span class="shelf-radio-custom" aria-hidden="true"></span>
+                      <span class="shelf-radio-text">Okuduklarım</span>
+                    </label>
+                    <label class="shelf-radio-card" for="shelf-want">
+                      <input type="radio" id="shelf-want" name="shelf" value="okuyacaklari" class="shelf-radio-input">
+                      <span class="shelf-radio-custom" aria-hidden="true"></span>
+                      <span class="shelf-radio-text">Okumak İstediklerim</span>
+                    </label>
+                  </div>
+
+                  <label class="shelf-checkbox-card" for="includeReviews">
+                    <input type="checkbox" id="includeReviews" name="include_reviews" class="shelf-checkbox-input">
+                    <span class="shelf-checkbox-custom" aria-hidden="true">
+                      <i class="fa-solid fa-check"></i>
+                    </span>
+                    <span class="shelf-checkbox-text">İncelemelerimi de dâhil et</span>
                   </label>
                 </div>
               </div>

@@ -48,6 +48,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateRadioCardStyles();
 
+  // İncelemeler Checkbox Seçimi
+  const includeReviewsCheckbox = document.getElementById('includeReviews');
+  function updateCheckboxCardStyle() {
+    if (includeReviewsCheckbox) {
+      const card = includeReviewsCheckbox.closest('.shelf-checkbox-card');
+      if (card) {
+        if (includeReviewsCheckbox.checked) {
+          card.classList.add('is-selected');
+        } else {
+          card.classList.remove('is-selected');
+        }
+      }
+    }
+  }
+  if (includeReviewsCheckbox) {
+    includeReviewsCheckbox.addEventListener('change', updateCheckboxCardStyle);
+    updateCheckboxCardStyle();
+  }
+
   // İlerleme & Kuyruk Elemanları
   const statusBadge = document.getElementById('statusBadge');
   const statusBadgeText = document.getElementById('statusBadgeText');
@@ -137,12 +156,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // State for silent auto-retry
   let currentUsername = '';
   let currentShelf = 'hepsi';
+  let currentIncludeReviews = false;
   let autoRetryCount = 0;
   const MAX_AUTO_RETRIES = 3;
 
-  async function startExportProcess(username, shelf) {
+  async function startExportProcess(username, shelf, includeReviews = false) {
     currentUsername = username;
     currentShelf = shelf;
+    currentIncludeReviews = includeReviews;
 
     // Buton durumunu ayarla
     startBtn.disabled = true;
@@ -154,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ username, shelf })
+        body: JSON.stringify({ username, shelf, include_reviews: includeReviews })
       });
 
       if (!response.ok) {
@@ -178,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoRetryCount++;
         if (queueInfoText) queueInfoText.textContent = 'Bağlantı kuruluyor, lütfen bekleyin...';
         setTimeout(() => {
-          startExportProcess(currentUsername, currentShelf);
+          startExportProcess(currentUsername, currentShelf, currentIncludeReviews);
         }, 1000);
       } else {
         showError(err.message || 'İş başlatılırken bir bağlantı hatası oluştu.');
@@ -198,6 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rawUsername = usernameInput.value;
     const username = cleanUsernameInput(rawUsername);
     const shelf = getSelectedShelf();
+    const includeReviews = includeReviewsCheckbox ? includeReviewsCheckbox.checked : false;
 
     if (!username) {
       alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
@@ -206,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     autoRetryCount = 0;
-    startExportProcess(username, shelf);
+    startExportProcess(username, shelf, includeReviews);
   });
 
   // ============================================================================

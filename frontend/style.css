@@ -508,12 +508,19 @@ body {
 }
 
 /* ------------------------------------------------------------------------------
-   Raf Seçim Butonları (Radio Group)
+   Raf Seçim Butonları & Seçenekler (Radio & Checkbox)
    ------------------------------------------------------------------------------ */
+.shelf-options-wrapper {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
 .shelf-radio-group {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+  flex: 3;
 }
 
 .shelf-radio-card {
@@ -605,13 +612,111 @@ body {
   font-weight: 700;
 }
 
+/* İnceleme Dahil Et Checkbox Kartı */
+.shelf-checkbox-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFF;
+  border: var(--pixel-border);
+  border-radius: 4px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--pixel-shadow-sm);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease, border-color 0.12s ease;
+  flex: 1.25;
+  white-space: nowrap;
+}
+
+.shelf-checkbox-card:hover {
+  background: var(--bg-parchment-light);
+  transform: translateY(-1px);
+}
+
+.shelf-checkbox-card:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--pixel-shadow-pressed);
+}
+
+.shelf-checkbox-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.shelf-checkbox-input:focus-visible + .shelf-checkbox-custom {
+  outline: 2px solid var(--accent-sage);
+  outline-offset: 2px;
+}
+
+.shelf-checkbox-custom {
+  width: 18px;
+  height: 18px;
+  border: var(--pixel-border);
+  border-radius: 3px;
+  background: #FFF;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.shelf-checkbox-custom i {
+  display: none;
+  font-size: 11px;
+  color: #FFF;
+}
+
+.shelf-checkbox-input:checked + .shelf-checkbox-custom {
+  background: var(--accent-sage);
+  border-color: var(--accent-sage-dark);
+}
+
+.shelf-checkbox-input:checked + .shelf-checkbox-custom i {
+  display: block;
+}
+
+.shelf-checkbox-card:has(.shelf-checkbox-input:checked),
+.shelf-checkbox-card.is-selected {
+  background: var(--accent-sage-light);
+  border-color: var(--accent-sage);
+  box-shadow: 2px 2px 0px var(--accent-sage);
+}
+
+.shelf-checkbox-text {
+  font-family: var(--font-serif);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink-espresso);
+  line-height: 1.25;
+}
+
+.shelf-checkbox-card:has(.shelf-checkbox-input:checked) .shelf-checkbox-text,
+.shelf-checkbox-card.is-selected .shelf-checkbox-text {
+  color: var(--accent-sage-dark);
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .shelf-options-wrapper {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
 @media (max-width: 640px) {
   .shelf-radio-group {
     grid-template-columns: 1fr;
     gap: 8px;
   }
 
-  .shelf-radio-card {
+  .shelf-radio-card,
+  .shelf-checkbox-card {
     padding: 12px 14px;
   }
 }

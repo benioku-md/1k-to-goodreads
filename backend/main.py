@@ -12,7 +12,7 @@ import string
 import time
 import uuid
 import urllib.parse
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 
 import httpx
@@ -49,18 +49,20 @@ MONTH_MAP = {
 }
 
 GOODREADS_CSV_HEADERS = [
-    "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf", "Read Count"
+    "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf", "Read Count", "My Review"
 ]
 
 class ExportRequest(BaseModel):
     username: str
     shelf: Optional[str] = "hepsi"
+    include_reviews: Optional[bool] = False
 
 class JobState:
-    def __init__(self, job_id: str, username: str, shelf: str = "hepsi"):
+    def __init__(self, job_id: str, username: str, shelf: str = "hepsi", include_reviews: bool = False):
         self.job_id: str = job_id
         self.username: str = username
         self.shelf: str = shelf
+        self.include_reviews: bool = include_reviews
         self.status: str = "queued"  # queued, scraping, resolving_isbn, completed, failed
         self.message: str = "Kuyruğa alındı..."
         self.queue_position: int = 1
@@ -273,6 +275,121 @@ def extract_isbn(html: str) -> str:
             return raw_isbn
     return ''
 
+def extract_text_from_token(token) -> str:
+    """1000Kitap rich-text token nesnelerini ([object Object] olmadan) saf metne çevirir."""
+    if token is None:
+        return ""
+    if isinstance(token, str):
+        return token
+    if isinstance(token, (int, float)):
+        return str(token)
+    if isinstance(token, dict):
+        if "adi" in token and token["adi"]:
+            return str(token["adi"])
+        if "baslik" in token and token["baslik"]:
+            return str(token["baslik"])
+        if "name" in token and token["name"]:
+            return str(token["name"])
+        if "text" in token and token["text"]:
+            return str(token["text"])
+        if "kadi" in token and token["kadi"]:
+            return f"@{token['kadi']}"
+        if "uye" in token and isinstance(token["uye"], dict):
+            uye = token["uye"]
+            if uye.get("kadi"):
+                return f"@{uye['kadi']}"
+            if uye.get("adi"):
+                return str(uye["adi"])
+        if "kitap" in token and isinstance(token["kitap"], dict) and token["kitap"].get("adi"):
+            return str(token["kitap"]["adi"])
+        if "yazar" in token and isinstance(token["yazar"], dict) and token["yazar"].get("adi"):
+            return str(token["yazar"]["adi"])
+        if "parse" in token and isinstance(token["parse"], list):
+            return "".join(extract_text_from_token(t) for t in token["parse"])
+    if isinstance(token, list):
+        return "".join(extract_text_from_token(t) for t in token)
+    return ""
+
+def clean_review_text(yorum_data: dict) -> str:
+    """1000Kitap yorum yapısını temizleyip Goodreads için maksimum 20.000 karaktere sınırlar."""
+    if not yorum_data or not isinstance(yorum_data, dict):
+        return ""
+    uzun = yorum_data.get("yorumUzunParse")
+    if uzun and isinstance(uzun, dict) and "parse" in uzun:
+        t = extract_text_from_token(uzun["parse"])
+        if t.strip():
+            return t.strip()[:20000]
+    yp = yorum_data.get("yorumParse")
+    if yp and isinstance(yp, dict) and "parse" in yp:
+        t = extract_text_from_token(yp["parse"])
+        if t.strip():
+            return t.strip()[:20000]
+    raw = yorum_data.get("metin") or yorum_data.get("icerik") or ""
+    return str(raw).strip()[:20000]
+
+async def fetch_user_reviews(session, username: str, headers: dict) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    1000Kitap mobil API'sinden kullanıcının yazdığı tüm incelemeleri çeker.
+    Dönen yapıyı (reviews_by_book_id, reviews_by_book_title) olarak döndürür.
+    """
+    reviews_by_id: Dict[str, str] = {}
+    reviews_by_title: Dict[str, str] = {}
+    url = "https://api.1000kitap.com/v2/okurlar/okurCekV2"
+    page = 1
+    has_more = True
+    max_pages = 50
+
+    while has_more and page <= max_pages:
+        params = {
+            "id": username,
+            "bolum": "incelemeler",
+            "sayfa": page,
+            "appVersion": "2.60.60",
+            "os": "android",
+            "hl": "tr"
+        }
+        try:
+            resp = await session.get(url, params=params, headers=headers, timeout=6.0)
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            sonuc = data.get("_sonuc") or data.get("sonuc") or {}
+            liste = sonuc.get("liste", [])
+            if not liste:
+                break
+
+            for item in liste:
+                if item.get("turu") != "yorumlar" and "yorumlar" not in item.get("alt", {}):
+                    continue
+                kitap = item.get("alt", {}).get("kitaplar", {})
+                yorum = item.get("alt", {}).get("yorumlar", {})
+                if not kitap.get("adi"):
+                    continue
+
+                review_text = clean_review_text(yorum)
+                if not review_text:
+                    continue
+
+                kitap_id = str(kitap.get("id") or "")
+                ana_id = str(kitap.get("anaKitapId") or "")
+                kitap_adi_clean = re.sub(r'\s+', ' ', kitap.get("adi", "").lower().strip())
+
+                if kitap_id:
+                    reviews_by_id[kitap_id] = review_text
+                if ana_id and ana_id != kitap_id:
+                    reviews_by_id[ana_id] = review_text
+                if kitap_adi_clean:
+                    reviews_by_title[kitap_adi_clean] = review_text
+
+            has_more = bool(sonuc.get("hasMore", False))
+            page += 1
+            if has_more:
+                await asyncio.sleep(0.3)
+        except Exception:
+            break
+
+    return reviews_by_id, reviews_by_title
+
 async def scrape_user_books(job: JobState):
     """
     1000Kitap API'sini saniyede maksimum 2 istek hız sınırlamasıyla tarar,
@@ -424,6 +541,10 @@ async def scrape_user_books(job: JobState):
                 ("okuyorOlduklari", "currently-reading", "Şu An Okuduklarım"),
                 ("okuyacaklari", "to-read", "Okumak İstediklerim")
             ]
+
+        review_task = None
+        if job.include_reviews:
+            review_task = asyncio.create_task(fetch_user_reviews(session, job.username, headers))
 
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
@@ -609,6 +730,17 @@ async def scrape_user_books(job: JobState):
                 await isbn_queue.put(None)
             await asyncio.gather(*ky_workers)
 
+        # İncelemeleri bekle ve kitaplarla eşle
+        if job.include_reviews and review_task:
+            try:
+                reviews_by_id, reviews_by_title = await review_task
+                for b in collected_books:
+                    b_id = str(b.get("id") or "")
+                    b_title = re.sub(r'\s+', ' ', b.get("title", "").lower().strip())
+                    b["my_review"] = reviews_by_id.get(b_id) or reviews_by_title.get(b_title, "")
+            except Exception as e:
+                pass
+
         # ======================================================================
         # 4.3. GOODREADS CSV ÇIKTISINI BELLEK ÜZERİNDE OLUŞTURMA
         # ======================================================================
@@ -625,7 +757,8 @@ async def scrape_user_books(job: JobState):
                 b.get("date_read", "") if is_read else "",
                 bookshelves_val,
                 ex_shelf,
-                str(b.get("read_count", 1)) if is_read else "0"
+                str(b.get("read_count", 1)) if is_read else "0",
+                sanitize_csv_field(b.get("my_review", ""))
             ]
             all_books_rows.append(row)
 
@@ -772,7 +905,7 @@ async def create_export_job(payload: ExportRequest):
         raise HTTPException(status_code=400, detail="Lütfen geçerli bir 1000Kitap kullanıcı adı girin.")
 
     job_id = uuid.uuid4().hex
-    job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi")
+    job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
     JOBS[job_id] = job
 
     ACTIVE_QUEUE_LIST.append(job_id)
