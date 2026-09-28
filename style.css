@@ -304,6 +304,32 @@ body {
   font-weight: 700;
 }
 
+.hero-note {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+  background: var(--bg-parchment-light);
+  border: 1px dashed rgba(45, 35, 30, 0.22);
+  border-radius: 6px;
+  padding: 8px 16px;
+  max-width: 680px;
+  margin: 4px auto 0;
+  line-height: 1.5;
+}
+
+.hero-note i {
+  color: var(--accent-terracotta);
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.hero-note strong {
+  color: var(--ink-espresso);
+}
+
 /* ==============================================================================
    AKTARRIM & REHBER YERLEŞİM DÜZENİ
    980px altı: Mobil tek sütun
@@ -1318,6 +1344,17 @@ body {
 
   .hero-desc {
     font-size: 0.88rem;
+  }
+
+  .hero-note {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .hero-note i {
+    margin-top: 3px;
   }
 
   .retro-card {
