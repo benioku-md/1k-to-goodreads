@@ -13,7 +13,7 @@ import time
 import uuid
 import urllib.parse
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from curl_cffi import requests as cffi_requests
@@ -49,7 +49,7 @@ MONTH_MAP = {
 }
 
 GOODREADS_CSV_HEADERS = [
-    "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf"
+    "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf", "Read Count"
 ]
 
 class ExportRequest(BaseModel):
@@ -121,17 +121,69 @@ def sanitize_csv_field(val: any) -> str:
     return text
 
 def parse_date(ek_bilgi: str) -> str:
-    """1000Kitap ekBilgi alanındaki Türkçe tarihi YYYY/MM/DD formatına çevirir."""
+    """
+    1000Kitap ekBilgi alanındaki Türkçe tarihi YYYY/MM/DD formatına çevirir.
+    Hem geçmiş yılları (örn: '23 Ara 2025 · 18 günde okudu')
+    hem de içinde bulunulan yılı (örn: '17 Eyl 12:40 · 35 günde okudu', '05 Nis 00:19', 'Bugün', 'Dün') destekler.
+    """
     if not ek_bilgi:
         return ""
+    
+    now = datetime.now()
+    current_year = str(now.year)
+    
+    # 1. Tam Tarih (Gün Ay Yıl) -> Örn: "09 Eki 2019", "23 Ara 2025"
     match = re.search(r'(\d{1,2})\s+([A-Za-zÇŞĞÖÜıİçşğöü]+)\s+(\d{4})', ek_bilgi)
-    if not match:
-        return ""
-    day = match.group(1).zfill(2)
-    month_name = match.group(2)
-    year = match.group(3)
-    month = MONTH_MAP.get(month_name, "01")
-    return f"{year}/{month}/{day}"
+    if match:
+        day = match.group(1).zfill(2)
+        month_name = match.group(2)
+        year = match.group(3)
+        month = MONTH_MAP.get(month_name, "01")
+        return f"{year}/{month}/{day}"
+    
+    # 2. Mevcut Yıl Tarihi (Gün Ay [Saat]) -> Örn: "17 Eyl 12:40", "05 Nis 00:19", "17 Eyl"
+    # (1000Kitap mevcut yılda yılı yazmaz, onun yerine saat veya sadece gün-ay yazar)
+    match_cur = re.search(r'(?:^|[·\s])(\d{1,2})\s+([A-Za-zÇŞĞÖÜıİçşğöü]+)(?:\s+\d{1,2}:\d{2})?', ek_bilgi)
+    if match_cur:
+        day_str = match_cur.group(1).zfill(2)
+        month_candidate = match_cur.group(2)
+        if month_candidate in MONTH_MAP:
+            month = MONTH_MAP[month_candidate]
+            return f"{current_year}/{month}/{day_str}"
+    
+    # 3. Göreceli Tarihler (Bugün, Dün, X gün önce)
+    ek_lower = ek_bilgi.lower()
+    if "bugün" in ek_lower:
+        return now.strftime("%Y/%m/%d")
+    if "dün" in ek_lower:
+        yesterday = now - timedelta(days=1)
+        return yesterday.strftime("%Y/%m/%d")
+    
+    days_ago = re.search(r'(\d+)\s+gün\s+önce', ek_lower)
+    if days_ago:
+        past_date = now - timedelta(days=int(days_ago.group(1)))
+        return past_date.strftime("%Y/%m/%d")
+    
+    if "saat önce" in ek_lower or "dakika önce" in ek_lower:
+        return now.strftime("%Y/%m/%d")
+    
+    return ""
+
+def parse_read_count(item: dict, ek_bilgi: str) -> int:
+    """
+    1000Kitap'taki tekrar okuma sayısını tespit eder.
+    Varsayılan 1'dir.
+    """
+    durum_btn = item.get("durumBtn") or item.get("okumaDurumuButon")
+    if isinstance(durum_btn, dict):
+        cnt = durum_btn.get("okumaSayisi", 0)
+        if isinstance(cnt, int) and cnt > 1:
+            return cnt
+    if ek_bilgi:
+        m = re.search(r'(\d+)\.\s*kez okudu', ek_bilgi.lower())
+        if m:
+            return int(m.group(1))
+    return 1
 
 def parse_rating(ek_bilgi: str) -> int:
     """
@@ -359,10 +411,16 @@ async def scrape_user_books(job: JobState):
         shelves_to_process = []
         if job.shelf == "okuyacaklari":
             shelves_to_process = [("okuyacaklari", "to-read", "Okumak İstediklerim")]
+        elif job.shelf == "okuyorOlduklari":
+            shelves_to_process = [("okuyorOlduklari", "currently-reading", "Şu An Okuduklarım")]
         elif job.shelf == "okuduklari":
             shelves_to_process = [("okuduklari", "read", "Okuduklarım")]
         else:  # "hepsi"
-            shelves_to_process = [("okuduklari", "read", "Okuduklarım"), ("okuyacaklari", "to-read", "Okumak İstediklerim")]
+            shelves_to_process = [
+                ("okuduklari", "read", "Okuduklarım"),
+                ("okuyorOlduklari", "currently-reading", "Şu An Okuduklarım"),
+                ("okuyacaklari", "to-read", "Okumak İstediklerim")
+            ]
 
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
@@ -478,9 +536,11 @@ async def scrape_user_books(job: JobState):
                         if goodreads_shelf == "read":
                             date_read = parse_date(ek_bilgi)
                             user_rating = parse_rating(ek_bilgi)
+                            read_count = parse_read_count(item, ek_bilgi)
                         else:
                             date_read = ""
                             user_rating = 0
+                            read_count = 0
 
                         book_entry = {
                             "id": item.get("id"),
@@ -490,6 +550,7 @@ async def scrape_user_books(job: JobState):
                             "user_rating": user_rating,
                             "date_read": date_read,
                             "exclusive_shelf": goodreads_shelf,
+                            "read_count": read_count,
                             "cover": item.get("resim") or item.get("resimB") or "",
                             "isbn": ""
                         }
@@ -550,15 +611,18 @@ async def scrape_user_books(job: JobState):
         # ======================================================================
         all_books_rows: List[List[str]] = []
         for b in collected_books:
-            is_to_read = (b.get("exclusive_shelf") == "to-read")
+            ex_shelf = b.get("exclusive_shelf", "read")
+            is_read = (ex_shelf == "read")
+            bookshelves_val = "" if is_read else ex_shelf
             row = [
                 sanitize_csv_field(b["title"]),
                 sanitize_csv_field(b["author"]),
                 sanitize_csv_field(b["isbn"]),
-                str(b["user_rating"]) if (not is_to_read and b.get("user_rating", 0) > 0) else "",
-                b.get("date_read", "") if not is_to_read else "",
-                "to-read" if is_to_read else "",
-                "to-read" if is_to_read else "read"
+                str(b["user_rating"]) if (is_read and b.get("user_rating", 0) > 0) else "",
+                b.get("date_read", "") if is_read else "",
+                bookshelves_val,
+                ex_shelf,
+                str(b.get("read_count", 1)) if is_read else "0"
             ]
             all_books_rows.append(row)
 
