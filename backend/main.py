@@ -411,10 +411,13 @@ async def scrape_user_books(job: JobState):
         shelves_to_process = []
         if job.shelf == "okuyacaklari":
             shelves_to_process = [("okuyacaklari", "to-read", "Okumak İstediklerim")]
+        elif job.shelf == "okuduklari":
+            shelves_to_process = [
+                ("okuduklari", "read", "Okuduklarım"),
+                ("okuyorOlduklari", "currently-reading", "Şu An Okuduklarım")
+            ]
         elif job.shelf == "okuyorOlduklari":
             shelves_to_process = [("okuyorOlduklari", "currently-reading", "Şu An Okuduklarım")]
-        elif job.shelf == "okuduklari":
-            shelves_to_process = [("okuduklari", "read", "Okuduklarım")]
         else:  # "hepsi"
             shelves_to_process = [
                 ("okuduklari", "read", "Okuduklarım"),

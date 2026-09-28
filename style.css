@@ -486,14 +486,8 @@ body {
    ------------------------------------------------------------------------------ */
 .shelf-radio-group {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-}
-
-@media (min-width: 981px) {
-  .shelf-radio-group {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 
 .shelf-radio-card {
@@ -585,7 +579,7 @@ body {
   font-weight: 700;
 }
 
-@media (max-width: 580px) {
+@media (max-width: 640px) {
   .shelf-radio-group {
     grid-template-columns: 1fr;
     gap: 8px;
