@@ -358,10 +358,10 @@ body {
   gap: 20px;
 }
 
-/* Tablet & PC Yerleşimi (980px'den büyük ekranlar) */
-@media (min-width: 981px) {
+/* Tablet & PC Yerleşimi (990px'den büyük ekranlar) */
+@media (min-width: 991px) {
   .centered-export-zone {
-    max-width: 760px; /* Ortalanmış ergonomik panel */
+    max-width: 810px; /* 50px genişletilmiş ergonomik panel */
     margin: 0 auto 32px auto;
   }
 
@@ -617,17 +617,19 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: #FFF;
   border: var(--pixel-border);
   border-radius: 4px;
-  padding: 11px 14px;
+  padding: 11px 12px;
   cursor: pointer;
   user-select: none;
   box-shadow: var(--pixel-shadow-sm);
   transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease, border-color 0.12s ease;
   flex: 1.25;
+  min-width: 0;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .shelf-checkbox-card:hover {
@@ -690,7 +692,7 @@ body {
 
 .shelf-checkbox-text {
   font-family: var(--font-serif);
-  font-size: 0.92rem;
+  font-size: 0.90rem;
   font-weight: 600;
   color: var(--ink-espresso);
   line-height: 1.25;
@@ -702,10 +704,14 @@ body {
   font-weight: 700;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 990px) {
   .shelf-options-wrapper {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .shelf-checkbox-card {
+    width: 100%;
   }
 }
 
@@ -1329,10 +1335,10 @@ body {
    RESPONSIVE & MOBİL UYUMLULUK SİSTEMİ (320px - 900px ARASI)
    ============================================================================== */
 
-/* Tablet & Küçük Ekranlar (980px altı - Mobilde olduğu gibi dikey akış) */
-@media (max-width: 980px) {
+/* Tablet & Küçük Ekranlar (990px altı - Mobilde olduğu gibi dikey akış) */
+@media (max-width: 990px) {
   .page-wrapper {
-    max-width: 760px;
+    max-width: 810px;
     padding: 16px 12px 32px 12px;
   }
 
