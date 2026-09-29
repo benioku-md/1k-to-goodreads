@@ -172,7 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       try {
-        await fetch(`${API_BASE_URL}/api/jobs/${currentJobId}/cancel`, { method: 'POST' });
+        await fetch(`${API_BASE_URL}/api/jobs/${currentJobId}/cancel`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': '1k-to-goodreads'
+          }
+        });
       } catch (e) {
         console.warn('İptal isteği hatası:', e);
       }
@@ -401,7 +406,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch(`${API_BASE_URL}/api/jobs`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Requested-With': '1k-to-goodreads'
         },
         body: JSON.stringify({ username, shelf, include_reviews: includeReviews })
       });

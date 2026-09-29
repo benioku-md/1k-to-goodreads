@@ -1147,17 +1147,39 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+ALLOWED_ORIGINS = [
+    "https://benioku-md.github.io",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:3000",
+    "http://127.0.0.1:5500",
+    "null"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^(https://.*\.trycloudflare\.com|http://(localhost|127\.0\.0\.1)(:[0-9]+)?)$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 @app.post("/api/jobs")
 async def create_export_job(payload: ExportRequest, request: Request):
     """Yeni aktarma görevi oluşturur ve FIFO kuyruğuna ekler."""
+    # 0. Kök ve İstemci Güvenlik Doğrulaması (Anti-Leech / Anti-Scrape)
+    origin = request.headers.get("origin")
+    if origin:
+        origin_clean = origin.rstrip("/")
+        is_allowed = (
+            origin_clean in ALLOWED_ORIGINS
+            or re.match(r"^https://.*\.trycloudflare\.com$", origin_clean)
+            or re.match(r"^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$", origin_clean)
+        )
+        if not is_allowed:
+            raise HTTPException(status_code=403, detail="Erişim reddedildi: Yetkisiz istemci kökü (origin).")
+
     raw_user = (payload.username or "").strip()
     if raw_user.startswith("@"):
         raw_user = raw_user[1:]
@@ -1472,6 +1494,7 @@ if os.path.exists(frontend_path):
 
 if __name__ == "__main__":
     import uvicorn
+    host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8080"))
-    uvicorn.run(app, host="0.0.0.0", port=port, access_log=False)
+    uvicorn.run(app, host=host, port=port, access_log=False)
 
