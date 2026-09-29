@@ -500,11 +500,57 @@ body {
   background: #FFFFF9;
 }
 
+/* Kullanıcı Adı Doğrulama ve Durum İkonu */
+.input-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  font-size: 1.15rem;
+  user-select: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.input-status-icon.hidden {
+  display: none !important;
+}
+
+.input-status-icon.is-valid {
+  color: #2E7D32;
+}
+
+.input-status-icon.is-invalid {
+  color: #C85A32;
+}
+
+.input-feedback {
+  font-size: 0.82rem;
+  color: #C85A32;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.input-feedback.hidden {
+  display: none !important;
+}
+
+.input-feedback i {
+  font-size: 0.9rem;
+}
+
 .input-hint {
   font-size: 0.82rem;
   color: var(--ink-light);
   font-style: italic;
   line-height: 1.4;
+}
+
+.input-hint.hidden {
+  display: none !important;
 }
 
 /* ------------------------------------------------------------------------------
@@ -755,6 +801,15 @@ body {
 .retro-btn:active {
   transform: translate(2px, 2px);
   box-shadow: var(--pixel-shadow-pressed) !important;
+}
+
+.retro-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed !important;
+  filter: grayscale(45%);
+  transform: none !important;
+  box-shadow: none !important;
+  pointer-events: none;
 }
 
 .btn-primary {

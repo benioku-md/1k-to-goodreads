@@ -101,7 +101,7 @@
                 <label for="usernameInput" class="input-label">
                   <i class="fa-solid fa-book-bookmark theme-icon"></i> 1000KITAP KULLANICI ADINIZ:
                 </label>
-                <div class="input-wrapper">
+                <div class="input-wrapper" id="usernameWrapper">
                   <span class="input-prefix" aria-hidden="true">
                     <span class="prefix-full">1000kitap.com/</span>
                     <span class="prefix-short">1k.com/</span>
@@ -117,8 +117,10 @@
                     autocapitalize="none"
                     autocomplete="off"
                   >
+                  <span id="inputStatusIcon" class="input-status-icon hidden" aria-hidden="true"></span>
                 </div>
-                <p class="input-hint">Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır. Profilinizin herkese açık olduğundan emin olun.</p>
+                <div id="usernameFeedback" class="input-feedback hidden"></div>
+                <p class="input-hint" id="inputDefaultHint">Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır. Profilinizin herkese açık olduğundan emin olun.</p>
               </div>
 
               <!-- Raf Seçimi -->

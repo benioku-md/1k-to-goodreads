@@ -124,7 +124,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const USERNAME_REGEX = /^[a-zA-Z0-9_]{1,50}$/;
+  const inputStatusIcon = document.getElementById('inputStatusIcon');
+  const usernameFeedback = document.getElementById('usernameFeedback');
+  const inputDefaultHint = document.getElementById('inputDefaultHint');
+
   const STORAGE_KEY = 'active_1k_job';
 
   function extractUsername(rawInput) {
@@ -140,6 +143,78 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
     return clean.trim();
   }
+
+  function validateUsername(rawInput) {
+    const username = extractUsername(rawInput);
+    if (!username) {
+      return { valid: false, empty: true, message: '' };
+    }
+    if (username.length < 4) {
+      return { valid: false, empty: false, message: 'Kullanıcı adı en az 4 karakter olmalıdır.' };
+    }
+    if (username.length > 30) {
+      return { valid: false, empty: false, message: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return { valid: false, empty: false, message: 'Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır.' };
+    }
+    if (/^\d+$/.test(username)) {
+      return { valid: false, empty: false, message: 'Kullanıcı adı sadece rakamlardan oluşamaz.' };
+    }
+    return { valid: true, empty: false, message: '', username };
+  }
+
+  function handleUsernameValidation() {
+    const raw = usernameInput ? usernameInput.value : '';
+    const res = validateUsername(raw);
+
+    if (res.empty) {
+      if (inputStatusIcon) {
+        inputStatusIcon.className = 'input-status-icon hidden';
+        inputStatusIcon.innerHTML = '';
+      }
+      if (usernameFeedback) {
+        usernameFeedback.className = 'input-feedback hidden';
+        usernameFeedback.textContent = '';
+      }
+      if (inputDefaultHint) inputDefaultHint.classList.remove('hidden');
+      if (startBtn) startBtn.disabled = true;
+      return false;
+    }
+
+    if (res.valid) {
+      if (inputStatusIcon) {
+        inputStatusIcon.className = 'input-status-icon is-valid';
+        inputStatusIcon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+      }
+      if (usernameFeedback) {
+        usernameFeedback.className = 'input-feedback hidden';
+        usernameFeedback.textContent = '';
+      }
+      if (inputDefaultHint) inputDefaultHint.classList.remove('hidden');
+      if (startBtn) startBtn.disabled = false;
+      return true;
+    } else {
+      if (inputStatusIcon) {
+        inputStatusIcon.className = 'input-status-icon is-invalid';
+        inputStatusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
+      }
+      if (usernameFeedback) {
+        usernameFeedback.className = 'input-feedback';
+        usernameFeedback.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> <span>${res.message}</span>`;
+      }
+      if (inputDefaultHint) inputDefaultHint.classList.add('hidden');
+      if (startBtn) startBtn.disabled = true;
+      return false;
+    }
+  }
+
+  if (usernameInput) {
+    usernameInput.addEventListener('input', handleUsernameValidation);
+    usernameInput.addEventListener('change', handleUsernameValidation);
+    usernameInput.addEventListener('paste', () => setTimeout(handleUsernameValidation, 10));
+  }
+  handleUsernameValidation();
 
   function saveActiveJobToStorage(jobId, username, shelf, includeReviews) {
     try {
@@ -245,21 +320,17 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
 
     const rawUsername = usernameInput.value;
-    const username = extractUsername(rawUsername);
+    const res = validateUsername(rawUsername);
+
+    if (!res.valid) {
+      handleUsernameValidation();
+      usernameInput.focus();
+      return;
+    }
+
+    const username = res.username;
     const shelf = getSelectedShelf();
     const includeReviews = includeReviewsCheckbox ? includeReviewsCheckbox.checked : false;
-
-    if (!username) {
-      alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
-      usernameInput.focus();
-      return;
-    }
-
-    if (!USERNAME_REGEX.test(username)) {
-      alert('Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır.');
-      usernameInput.focus();
-      return;
-    }
 
     autoRetryCount = 0;
     startExportProcess(username, shelf, includeReviews);
@@ -270,15 +341,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================================
   function initProgressView(jobData) {
     const pos = jobData.queue_position !== undefined ? jobData.queue_position : (jobData.position !== undefined ? jobData.position : 1);
+    statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+    statusBadge.style.borderColor = 'var(--ink-espresso)';
     const waitCount = pos - 1;
     if (waitCount > 0) {
-      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
       queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
     } else {
-      statusBadgeText.textContent = 'BAŞLATILIYOR';
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
-      queueInfoText.textContent = jobData.message || 'Sıradaki işlem sizin, aktarım başlatılıyor...';
+      queueInfoText.textContent = 'Sıranız: #1 (Sıradaki işlem sizin, aktarım başlatılıyor...)';
     }
 
     progressBar.style.width = '3%';
@@ -289,7 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
     liveBookCard.classList.add('hidden');
     liveBookCover.classList.add('hidden');
     liveBookCover.src = '';
-    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
   }
 
   // ============================================================================
@@ -355,16 +423,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. KUYRUKTA BEKLEME DURUMU
     if (data.status === 'queued') {
       const pos = data.position !== undefined ? data.position : (data.queue_position !== undefined ? data.queue_position : 1);
+      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
       const waitCount = pos - 1;
       if (waitCount > 0) {
-        statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-        statusBadge.style.borderColor = 'var(--ink-espresso)';
         queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
-        return;
+      } else {
+        queueInfoText.textContent = 'Sıranız: #1 (Sıradaki işlem sizin, aktarım başlatılıyor...)';
       }
-      statusBadgeText.textContent = 'BAŞLATILIYOR';
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
-      queueInfoText.textContent = data.message || 'Sıradaki işlem sizin, aktarım başlatılıyor...';
       return;
     }
 
@@ -511,6 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
     usernameInput.value = '';
+    handleUsernameValidation();
     const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');
     if (defaultRadio) {
       defaultRadio.checked = true;
@@ -523,6 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
   retryBtn.addEventListener('click', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
+    handleUsernameValidation();
     showSection(formSection);
     usernameInput.focus();
   });

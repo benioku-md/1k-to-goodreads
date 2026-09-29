@@ -64,7 +64,7 @@ class JobState:
         self.shelf: str = shelf
         self.include_reviews: bool = include_reviews
         self.status: str = "queued"  # queued, scraping, resolving_isbn, completed, failed
-        self.message: str = "Kuyruğa alındı..."
+        self.message: str = "Kuyruğa alındı. Sıranız: #1"
         self.queue_position: int = 1
         self.current_count: int = 0
         self.total_count: int = 0
@@ -107,8 +107,21 @@ JOB_QUEUE: asyncio.Queue = asyncio.Queue()
 ACTIVE_QUEUE_LIST: List[str] = []
 IP_REQUEST_TIMESTAMPS: Dict[str, List[float]] = {}
 RATE_LIMIT_WINDOW = 60.0  # 60 saniye
-MAX_REQUESTS_PER_WINDOW = 3  # IP başına dakikada maksimum 3 görev oluşturma isteği
-USERNAME_REGEX = re.compile(r'^[a-zA-Z0-9_]{1,50}$')
+MAX_REQUESTS_PER_WINDOW = 15  # IP başına dakikada maksimum 15 istek (flood kalkanı)
+
+def validate_username(username: str) -> Tuple[bool, str]:
+    """1000Kitap kullanıcı adı kurallarını doğrular."""
+    if not username:
+        return False, "Lütfen bir kullanıcı adı girin."
+    if len(username) < 4:
+        return False, "Kullanıcı adı en az 4 karakter olmalıdır."
+    if len(username) > 30:
+        return False, "Kullanıcı adı en fazla 30 karakter olabilir."
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return False, "Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır."
+    if re.match(r'^\d+$', username):
+        return False, "Kullanıcı adı sadece rakamlardan oluşamaz."
+    return True, ""
 
 def get_client_ip(request: Request) -> str:
     """İstemcinin gerçek IP adresini tespit eder (Cloudflare Tunnel, Proxy veya Doğrudan)."""
@@ -941,14 +954,12 @@ async def create_export_job(payload: ExportRequest, request: Request):
             pass
     username = raw_user.strip().lower()
 
-    # 1. Kullanıcı adı kuralı (Sadece İngilizce harfler, rakamlar ve alt tire)
-    if not username or not USERNAME_REGEX.match(username):
-        raise HTTPException(
-            status_code=400,
-            detail="Geçersiz kullanıcı adı. Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır."
-        )
+    # 1. Kullanıcı adı kuralı (Geçersizse IP kotası harcanmaz)
+    is_valid, error_msg = validate_username(username)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
 
-    # 2. IP Bazlı İstek Sınırı (Rate Limiting - Dakikada en fazla 3 istek)
+    # 2. IP Bazlı İstek Sınırı (Rate Limiting)
     client_ip = get_client_ip(request)
     now = time.time()
     timestamps = IP_REQUEST_TIMESTAMPS.get(client_ip, [])
@@ -962,14 +973,13 @@ async def create_export_job(payload: ExportRequest, request: Request):
     timestamps.append(now)
     IP_REQUEST_TIMESTAMPS[client_ip] = timestamps
 
-    # 3. Mükerrer Kuyruk Koruması (Aynı kullanıcı adı zaten kuyrukta veya aktif işlemde mi?)
+    # 3. Mükerrer Kuyruk Koruması (Mahremiyet korumalı genel mesaj)
     for q_id in list(ACTIVE_QUEUE_LIST):
         existing_job = JOBS.get(q_id)
         if existing_job and existing_job.username == username:
-            wait_pos = existing_job.queue_position
             raise HTTPException(
                 status_code=409,
-                detail=f"'{username}' kullanıcısı için zaten kuyrukta bekleyen bir işlem bulunmaktadır (Sıra: #{wait_pos})."
+                detail="Bu kullanıcı hesabı için zaten sırada bekleyen bir işlem var. Lütfen sıranın tamamlanmasını bekleyin."
             )
 
     active_statuses = ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky")
@@ -977,7 +987,7 @@ async def create_export_job(payload: ExportRequest, request: Request):
         if j.username == username and j.status in active_statuses:
             raise HTTPException(
                 status_code=409,
-                detail=f"'{username}' kullanıcısının kitaplığı şu anda taranıyor. Lütfen mevcut işlemin tamamlanmasını bekleyin."
+                detail="Bu kullanıcı hesabı şu anda taranıyor. Lütfen mevcut işlemin tamamlanmasını bekleyin."
             )
 
     job_id = uuid.uuid4().hex
