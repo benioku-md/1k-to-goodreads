@@ -414,9 +414,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await response.json();
       currentJobId = data.job_id;
 
-      // Tarayıcı hafızasına kaydet (F5 veya sayfa yenilemede oturumu korumak için)
-      saveActiveJobToStorage(currentJobId, username, shelf, includeReviews);
-
       // İlerleme ekranını hazırla
       initProgressView(data);
       showSection(progressSection);
@@ -918,54 +915,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // SAYFA YENİLEME VE DEVAM EDEN GÖREVİ GERİ YÜKLEME (LocalStorage)
+  // SAYFA YENİLEME (F5) DAVRANIŞI: OTURUMU HER ZAMAN SIFIRDAN TEMİZ BAŞLAT
   // ============================================================================
-  async function checkSavedActiveJob() {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved);
-      if (!parsed || !parsed.jobId) {
-        clearActiveJobFromStorage();
-        return;
-      }
-
-      // 15 dakikadan eskiyse süresi dolmuştur, temizle
-      if (Date.now() - (parsed.savedAt || 0) > 15 * 60 * 1000) {
-        clearActiveJobFromStorage();
-        return;
-      }
-
-      const res = await fetch(`${API_BASE_URL}/api/jobs/${parsed.jobId}/status`);
-      if (!res.ok) {
-        clearActiveJobFromStorage();
-        return;
-      }
-
-      const data = await res.json();
-      currentJobId = parsed.jobId;
-      currentUsername = parsed.username || '';
-      currentShelf = parsed.shelf || 'hepsi';
-      currentIncludeReviews = !!parsed.includeReviews;
-
-      if (data.status === 'completed') {
-        showSection(completedSection);
-        handleJobUpdate(data);
-      } else if (data.status === 'failed') {
-        clearActiveJobFromStorage();
-      } else {
-        initProgressView(data);
-        showSection(progressSection);
-        handleJobUpdate(data);
-        startEventStream(currentJobId);
-        startFallbackPolling(currentJobId);
-      }
-    } catch (e) {
-      console.warn('Aktif görev geri yükleme hatası:', e);
-    }
-  }
-
-  // Sayfa açıldığında hafızada bekleyen veya devam eden bir görev varsa geri bağla
-  checkSavedActiveJob();
+  clearActiveJobFromStorage();
 
 });

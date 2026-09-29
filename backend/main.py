@@ -78,23 +78,26 @@ class JobState:
         self.event_queues: List[asyncio.Queue] = []
 
     def to_dict(self):
-        running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != self.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+        running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, self.job_id)
         idx = ACTIVE_QUEUE_LIST.index(self.job_id) if self.job_id in ACTIVE_QUEUE_LIST else 0
         people_ahead = ((1 if running_active else 0) + idx) if self.status == "queued" else 0
 
         estimated_seconds = None
         if self.status == "queued":
-            if running_active:
-                active_job = JOBS.get(CURRENT_RUNNING_JOB_ID)
-                if active_job and active_job.total_count > 0:
-                    rem_active = max(0, active_job.total_count - active_job.current_count)
-                    active_sec = math.ceil(rem_active / 9) + 1
+            if people_ahead > 0:
+                if running_active:
+                    active_job = JOBS.get(CURRENT_RUNNING_JOB_ID)
+                    if active_job and active_job.total_count > 0:
+                        rem_active = max(0, active_job.total_count - active_job.current_count)
+                        active_sec = math.ceil(rem_active / 9) + 1
+                    else:
+                        active_sec = 25
+                    estimated_seconds = active_sec + (max(0, people_ahead - 1) * 25)
                 else:
-                    active_sec = 21
-                estimated_seconds = active_sec + (idx * 21)
+                    estimated_seconds = max(1, people_ahead * 25)
             else:
-                estimated_seconds = idx * 21
-        elif self.status in ("scraping", "resolving_isbn"):
+                estimated_seconds = 0
+        elif self.status not in ("completed", "failed", "cancelled", "queued"):
             rem = max(0, self.total_count - self.current_count) if self.total_count > 0 else 50
             estimated_seconds = max(1, math.ceil(rem / 9) + 1)
 
@@ -134,6 +137,15 @@ CURRENT_RUNNING_JOB_ID: Optional[str] = None
 IP_REQUEST_TIMESTAMPS: Dict[str, List[float]] = {}
 RATE_LIMIT_WINDOW = 60.0  # 60 saniye
 MAX_REQUESTS_PER_WINDOW = 15  # IP başına dakikada maksimum 15 istek (flood kalkanı)
+
+def is_job_running_active(job_id_to_check: Optional[str], exclude_job_id: Optional[str] = None) -> bool:
+    """Belirtilen görevin şu anda işçi havuzunda aktif olarak taranıp taranmadığını kesin olarak belirler."""
+    if not job_id_to_check or job_id_to_check == exclude_job_id:
+        return False
+    job = JOBS.get(job_id_to_check)
+    if not job or job.cancelled:
+        return False
+    return job.status not in ("completed", "failed", "cancelled", "queued")
 
 def validate_username(username: str) -> Tuple[bool, str]:
     """1000Kitap kullanıcı adı kurallarını doğrular."""
@@ -1081,9 +1093,8 @@ async def create_export_job(payload: ExportRequest, request: Request):
                 detail="Bu kullanıcı hesabı için zaten sırada bekleyen bir işlem var. Lütfen sıranın tamamlanmasını bekleyin."
             )
 
-    active_statuses = ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky")
     for jid, j in list(JOBS.items()):
-        if j.username == username and j.status in active_statuses:
+        if j.username == username and is_job_running_active(jid):
             raise HTTPException(
                 status_code=409,
                 detail="Bu kullanıcı hesabı şu anda taranıyor. Lütfen mevcut işlemin tamamlanmasını bekleyin."
@@ -1093,7 +1104,7 @@ async def create_export_job(payload: ExportRequest, request: Request):
     job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
     JOBS[job_id] = job
 
-    running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+    running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID)
     people_ahead = (1 if running_active else 0) + len(ACTIVE_QUEUE_LIST)
     total_position = people_ahead + 1
 
@@ -1142,7 +1153,7 @@ async def cancel_job(job_id: str):
         CURRENT_RUNNING_JOB_ID = None
 
     # Arkadaki kuyruktaki işlerin sıralarını ve sürelerini güncelle
-    running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+    running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID)
     for idx, q_id in enumerate(ACTIVE_QUEUE_LIST):
         waiting_job = JOBS.get(q_id)
         if waiting_job and waiting_job.status == "queued":
@@ -1202,17 +1213,24 @@ async def stream_job_events(job_id: str, request: Request):
 
     async def event_generator():
         # İlk bağlantıda mevcut durumu hemen gönder
-        running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != job.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+        running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, job.job_id)
         idx = ACTIVE_QUEUE_LIST.index(job.job_id) if job.job_id in ACTIVE_QUEUE_LIST else 0
         people_ahead = ((1 if running_active else 0) + idx) if job.status == "queued" else 0
         job_info = job.to_dict()
 
+        if job.status == "queued":
+            current_pos = people_ahead + 1
+            msg = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..." if people_ahead > 0 else "Sıranız: #1 (Aktarım başlatılıyor)..."
+        else:
+            current_pos = job.queue_position
+            msg = job.message
+
         initial_payload = {
             "type": "queued" if job.status == "queued" else "status",
             "status": job.status,
-            "message": job.message,
-            "position": job.queue_position,
-            "queue_position": job.queue_position,
+            "message": msg,
+            "position": current_pos,
+            "queue_position": current_pos,
             "people_ahead": people_ahead,
             "estimated_seconds": job_info.get("estimated_seconds"),
             "current": job.current_count,
