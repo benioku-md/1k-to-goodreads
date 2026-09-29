@@ -346,11 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (peopleAhead > 0) {
       statusBadgeText.textContent = `SIRANIZ: #${pos}`;
       statusBadge.style.borderColor = 'var(--ink-espresso)';
-      if (peopleAhead === 1) {
-        queueInfoText.textContent = 'Kuyruktasınız (Önünüzdeki kitaplık taranıyor)...';
-      } else {
-        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-      }
+      queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
     } else {
       statusBadgeText.textContent = 'BAŞLATILIYOR';
       statusBadge.style.borderColor = 'var(--ink-espresso)';
@@ -436,11 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (peopleAhead > 0) {
         statusBadgeText.textContent = `SIRANIZ: #${pos}`;
         statusBadge.style.borderColor = 'var(--ink-espresso)';
-        if (peopleAhead === 1) {
-          queueInfoText.textContent = 'Kuyruktasınız (Önünüzdeki kitaplık taranıyor)...';
-        } else {
-          queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-        }
+        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
       } else {
         statusBadgeText.textContent = 'BAŞLATILIYOR';
         statusBadge.style.borderColor = 'var(--ink-espresso)';

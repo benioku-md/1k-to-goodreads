@@ -857,7 +857,7 @@ async def queue_worker():
                 if waiting_job and waiting_job.status == "queued":
                     people_ahead = 1 + idx  # 1 aktif taranan işlem + önündeki bekleyenler
                     waiting_job.queue_position = people_ahead + 1
-                    msg = "Kuyruktasınız (Önünüzdeki kitaplık taranıyor)..." if people_ahead == 1 else f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
+                    msg = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
                     await waiting_job.broadcast({
                         "type": "queued",
                         "status": "queued",
@@ -1011,8 +1011,6 @@ async def create_export_job(payload: ExportRequest, request: Request):
 
     if people_ahead == 0:
         job.message = "İşleminiz hazırlanıyor, aktarım başlatılıyor..."
-    elif people_ahead == 1:
-        job.message = "Kuyruktasınız (Önünüzdeki kitaplık taranıyor)..."
     else:
         job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
 
