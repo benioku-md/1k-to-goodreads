@@ -72,6 +72,8 @@ class JobState:
         self.last_book: Optional[dict] = None
         self.csv_bytes: Optional[bytes] = None
         self.error_message: Optional[str] = None
+        self.preview_books: List[dict] = []
+        self.cancelled: bool = False
         self.created_at: float = time.time()
         self.event_queues: List[asyncio.Queue] = []
 
@@ -79,16 +81,35 @@ class JobState:
         running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != self.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
         idx = ACTIVE_QUEUE_LIST.index(self.job_id) if self.job_id in ACTIVE_QUEUE_LIST else 0
         people_ahead = ((1 if running_active else 0) + idx) if self.status == "queued" else 0
+
+        estimated_seconds = None
+        if self.status == "queued":
+            if running_active:
+                active_job = JOBS.get(CURRENT_RUNNING_JOB_ID)
+                if active_job and active_job.total_count > 0:
+                    rem_active = max(0, active_job.total_count - active_job.current_count)
+                    active_sec = math.ceil(rem_active / 9) + 1
+                else:
+                    active_sec = 21
+                estimated_seconds = active_sec + (idx * 21)
+            else:
+                estimated_seconds = idx * 21
+        elif self.status in ("scraping", "resolving_isbn"):
+            rem = max(0, self.total_count - self.current_count) if self.total_count > 0 else 50
+            estimated_seconds = max(1, math.ceil(rem / 9) + 1)
+
         return {
             "job_id": self.job_id,
             "status": self.status,
             "message": self.message,
             "queue_position": self.queue_position,
             "people_ahead": people_ahead,
+            "estimated_seconds": estimated_seconds,
             "current_count": self.current_count,
             "total_count": self.total_count,
             "percent": self.percent,
             "last_book": self.last_book,
+            "preview_books": self.preview_books,
             "error_message": self.error_message
         }
 
@@ -462,8 +483,11 @@ async def scrape_user_books(job: JobState):
         async def ky_worker(client: httpx.AsyncClient):
             nonlocal resolved_count
             while True:
+                if job.cancelled:
+                    isbn_queue.task_done()
+                    break
                 book = await isbn_queue.get()
-                if book is None:
+                if book is None or job.cancelled:
                     isbn_queue.task_done()
                     break
 
@@ -486,7 +510,7 @@ async def scrape_user_books(job: JobState):
 
                     cf_blocked = False
                     for q in queries:
-                        if cf_blocked:
+                        if cf_blocked or job.cancelled:
                             break
                         try:
                             encoded_q = urllib.parse.quote(q)
@@ -516,7 +540,7 @@ async def scrape_user_books(job: JobState):
 
                     # Yabanci datacenter engeli varsa, varsa harici cozumleyici uzerinden coz
                     fallback_resolver = os.getenv("FALLBACK_RESOLVER_URL", "")
-                    if not found_isbn and cf_blocked and fallback_resolver:
+                    if not found_isbn and cf_blocked and fallback_resolver and not job.cancelled:
                         try:
                             b_resp = await client.get(fallback_resolver, params={"title": raw_title, "author": raw_author}, timeout=4.0)
                             if b_resp.status_code == 200:
@@ -549,6 +573,9 @@ async def scrape_user_books(job: JobState):
                         "cover": cover_to_send or existing_cover
                     }
 
+                rem_target = max(0, target_total - resolved_count)
+                eta_sec = max(1, math.ceil(rem_target / 9) + 1)
+
                 await job.broadcast({
                     "type": "progress",
                     "status": "resolving_isbn",
@@ -556,6 +583,7 @@ async def scrape_user_books(job: JobState):
                     "current": resolved_count,
                     "total": target_total,
                     "percent": pct_isbn,
+                    "estimated_seconds": eta_sec,
                     "last_book": job.last_book
                 })
 
@@ -591,6 +619,9 @@ async def scrape_user_books(job: JobState):
                 has_more = True
 
                 while has_more:
+                    if job.cancelled:
+                        raise Exception("İşlem kullanıcı tarafından iptal edildi.")
+
                     params = {
                         "kadi": job.username,
                         "raf": shelf_slug,
@@ -604,6 +635,8 @@ async def scrape_user_books(job: JobState):
 
                     response = None
                     for retry in range(2):
+                        if job.cancelled:
+                            raise Exception("İşlem kullanıcı tarafından iptal edildi.")
                         try:
                             response = await session.get(url, params=params, headers=headers, timeout=6.0)
                             if response.status_code in (403, 429):
@@ -682,6 +715,8 @@ async def scrape_user_books(job: JobState):
                         break
 
                     for item in raw_list:
+                        if job.cancelled:
+                            break
                         if item.get("renderTuru") == "reklam" or not item.get("adi"):
                             continue
 
@@ -730,6 +765,9 @@ async def scrape_user_books(job: JobState):
                         job.percent = min(95, len(collected_books) * 5)
 
                     job.message = f"{shelf_display} taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
+                    rem_scrape = max(0, (job.total_count or len(collected_books)) - job.current_count)
+                    eta_scrape = max(1, math.ceil(rem_scrape / 9) + 1)
+
                     await job.broadcast({
                         "type": "progress",
                         "status": "scraping",
@@ -737,6 +775,7 @@ async def scrape_user_books(job: JobState):
                         "current": job.current_count,
                         "total": job.total_count,
                         "percent": job.percent,
+                        "estimated_seconds": eta_scrape,
                         "last_book": job.last_book
                     })
 
@@ -751,7 +790,7 @@ async def scrape_user_books(job: JobState):
 
             if not collected_books:
                 raise Exception(
-                    "Seçilen raflarda taranacak kitap bulunamadı. "
+                    "Seçilen raflarda aktarılacak kitap bulunamadı. "
                     "Raflarınız boş veya gizli olabilir. Lütfen 1000Kitap Gizlilik ayarlarınızı kontrol edin."
                 )
 
@@ -810,23 +849,47 @@ async def scrape_user_books(job: JobState):
         if job.total_count == 0 or job.total_count < job.current_count:
             job.total_count = job.current_count
 
+        # İlk 5 kitap için mini önizleme hazırla
+        job.preview_books = []
+        for b in collected_books[:5]:
+            ex_shelf = b.get("exclusive_shelf", "read")
+            shelf_label = "Okundu" if ex_shelf == "read" else ("Okunacak" if ex_shelf == "to-read" else "Şu An Okunuyor")
+            job.preview_books.append({
+                "title": b.get("title", ""),
+                "author": b.get("author", ""),
+                "rating": b.get("user_rating", 0),
+                "shelf": shelf_label,
+                "isbn": b.get("isbn", ""),
+                "cover": b.get("cover", "")
+            })
+
         await job.broadcast({
             "type": "completed",
             "status": "completed",
             "current": job.current_count,
             "total": job.total_count,
             "percent": 100,
+            "preview_books": job.preview_books,
             "download_url": f"/api/jobs/{job.job_id}/download"
         })
 
     except Exception as e:
-        job.status = "failed"
-        job.error_message = str(e)
-        await job.broadcast({
-            "type": "error",
-            "status": "failed",
-            "error": str(e)
-        })
+        if job.cancelled:
+            job.status = "cancelled"
+            job.message = "İşlem iptal edildi."
+            await job.broadcast({
+                "type": "cancelled",
+                "status": "cancelled",
+                "message": "İşlem kullanıcı tarafından iptal edildi."
+            })
+        else:
+            job.status = "failed"
+            job.error_message = str(e)
+            await job.broadcast({
+                "type": "error",
+                "status": "failed",
+                "error": str(e)
+            })
     finally:
         if session:
             try:
@@ -839,10 +902,11 @@ async def scrape_user_books(job: JobState):
 # ==============================================================================
 async def queue_worker():
     """Arka planda FIFO sırasına göre işleri işleyen ana kuyruk döngüsü."""
+    global CURRENT_RUNNING_JOB_ID
     while True:
         job_id = await JOB_QUEUE.get()
         job = JOBS.get(job_id)
-        if not job:
+        if not job or job.cancelled:
             JOB_QUEUE.task_done()
             continue
 
@@ -858,12 +922,20 @@ async def queue_worker():
                     people_ahead = 1 + idx  # 1 aktif taranan işlem + önündeki bekleyenler
                     waiting_job.queue_position = people_ahead + 1
                     msg = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
+                    waiting_job.message = msg
+
+                    active_job = JOBS.get(job_id)
+                    rem_act = max(0, active_job.total_count - active_job.current_count) if (active_job and active_job.total_count > 0) else 180
+                    act_sec = math.ceil(rem_act / 9) + 1
+                    est_sec = act_sec + (idx * 21)
+
                     await waiting_job.broadcast({
                         "type": "queued",
                         "status": "queued",
                         "position": waiting_job.queue_position,
                         "queue_position": waiting_job.queue_position,
                         "people_ahead": people_ahead,
+                        "estimated_seconds": est_sec,
                         "message": msg
                     })
 
@@ -881,13 +953,17 @@ async def queue_worker():
             await scrape_user_books(job)
 
         except Exception as e:
-            job.status = "failed"
-            job.error_message = str(e)
-            await job.broadcast({
-                "type": "error",
-                "status": "failed",
-                "error": str(e)
-            })
+            if job.cancelled:
+                job.status = "cancelled"
+                job.message = "İşlem iptal edildi."
+            else:
+                job.status = "failed"
+                job.error_message = str(e)
+                await job.broadcast({
+                    "type": "error",
+                    "status": "failed",
+                    "error": str(e)
+                })
         finally:
             CURRENT_RUNNING_JOB_ID = None
             JOB_QUEUE.task_done()
@@ -1016,12 +1092,71 @@ async def create_export_job(payload: ExportRequest, request: Request):
 
     await JOB_QUEUE.put(job_id)
 
+    job_dict = job.to_dict()
     return {
         "job_id": job_id,
         "queue_position": job.queue_position,
         "people_ahead": people_ahead,
+        "estimated_seconds": job_dict.get("estimated_seconds"),
         "message": job.message
     }
+
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    """Kullanıcının sıradan çıkmasını veya devam eden aktarımı iptal etmesini sağlar."""
+    global CURRENT_RUNNING_JOB_ID
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="İşlem bulunamadı veya süresi doldu.")
+
+    job.status = "cancelled"
+    job.cancelled = True
+    job.message = "İşlem iptal edildi."
+
+    if job_id in ACTIVE_QUEUE_LIST:
+        ACTIVE_QUEUE_LIST.remove(job_id)
+
+    if CURRENT_RUNNING_JOB_ID == job_id:
+        CURRENT_RUNNING_JOB_ID = None
+
+    # Arkadaki kuyruktaki işlerin sıralarını ve sürelerini güncelle
+    running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+    for idx, q_id in enumerate(ACTIVE_QUEUE_LIST):
+        waiting_job = JOBS.get(q_id)
+        if waiting_job and waiting_job.status == "queued":
+            people_ahead = (1 if running_active else 0) + idx
+            waiting_job.queue_position = people_ahead + 1
+            if people_ahead == 0:
+                waiting_job.message = "İşleminiz hazırlanıyor, aktarım başlatılıyor..."
+            else:
+                waiting_job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
+
+            # Dinamik ETA
+            if running_active:
+                act = JOBS.get(CURRENT_RUNNING_JOB_ID)
+                rem_act = max(0, act.total_count - act.current_count) if (act and act.total_count > 0) else 180
+                act_sec = math.ceil(rem_act / 9) + 1
+            else:
+                act_sec = 0
+            waiting_job.estimated_seconds = act_sec + (idx * 21)
+
+            await waiting_job.broadcast({
+                "type": "queued",
+                "status": "queued",
+                "position": waiting_job.queue_position,
+                "queue_position": waiting_job.queue_position,
+                "people_ahead": people_ahead,
+                "estimated_seconds": waiting_job.estimated_seconds,
+                "message": waiting_job.message
+            })
+
+    await job.broadcast({
+        "type": "cancelled",
+        "status": "cancelled",
+        "message": "İşlem iptal edildi."
+    })
+
+    return {"status": "ok", "message": "İşlem başarıyla iptal edildi."}
 
 @app.get("/api/jobs/{job_id}/status")
 async def get_job_status(job_id: str):
@@ -1048,6 +1183,7 @@ async def stream_job_events(job_id: str, request: Request):
         running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != job.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
         idx = ACTIVE_QUEUE_LIST.index(job.job_id) if job.job_id in ACTIVE_QUEUE_LIST else 0
         people_ahead = ((1 if running_active else 0) + idx) if job.status == "queued" else 0
+        job_info = job.to_dict()
 
         initial_payload = {
             "type": "queued" if job.status == "queued" else "status",
@@ -1056,16 +1192,18 @@ async def stream_job_events(job_id: str, request: Request):
             "position": job.queue_position,
             "queue_position": job.queue_position,
             "people_ahead": people_ahead,
+            "estimated_seconds": job_info.get("estimated_seconds"),
             "current": job.current_count,
             "total": job.total_count,
             "percent": job.percent,
             "last_book": job.last_book,
+            "preview_books": job.preview_books,
             "error": job.error_message
         }
         yield f"data: {json.dumps(initial_payload)}\n\n"
 
         if job.status == "completed":
-            yield f"data: {json.dumps({'type': 'completed', 'status': 'completed', 'current': job.current_count, 'total': job.total_count, 'percent': 100, 'download_url': f'/api/jobs/{job.job_id}/download'})}\n\n"
+            yield f"data: {json.dumps({'type': 'completed', 'status': 'completed', 'current': job.current_count, 'total': job.total_count, 'percent': 100, 'preview_books': job.preview_books, 'download_url': f'/api/jobs/{job.job_id}/download'})}\n\n"
             return
 
         try:
@@ -1075,7 +1213,7 @@ async def stream_job_events(job_id: str, request: Request):
                 try:
                     payload = await asyncio.wait_for(event_queue.get(), timeout=15.0)
                     yield f"data: {json.dumps(payload)}\n\n"
-                    if payload.get("type") in ("completed", "error"):
+                    if payload.get("type") in ("completed", "error", "cancelled"):
                         break
                 except asyncio.TimeoutError:
                     # Bağlantıyı canlı tutmak için ping/keepalive gönder

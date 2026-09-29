@@ -127,7 +127,7 @@ body {
 /* Kindle Durum Çubuğu */
 .kindle-status-bar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   padding: 6px 12px 14px 12px;
   font-family: var(--font-pixel);
@@ -141,7 +141,53 @@ body {
 .status-left, .status-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.status-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: #DDD2C7;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+  position: relative;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.status-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFF;
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.copy-tooltip {
+  position: absolute;
+  top: 130%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2D231E;
+  color: #F7F4EB;
+  border: 1px solid #DDD2C7;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.copy-tooltip.hidden {
+  display: none !important;
 }
 
 .pixel-badge {
@@ -489,6 +535,15 @@ body {
 
 .prefix-short {
   display: none;
+}
+
+.input-field-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  position: relative;
 }
 
 .retro-input {
@@ -957,6 +1012,55 @@ body {
   letter-spacing: 0.5px;
 }
 
+.queue-eta-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #5D5245;
+  background: rgba(45, 35, 30, 0.06);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px dashed rgba(45, 35, 30, 0.25);
+  margin-top: 4px;
+}
+
+.queue-eta-box .eta-icon {
+  color: var(--accent-terracotta);
+  font-size: 0.9rem;
+}
+
+.queue-eta-box.hidden {
+  display: none !important;
+}
+
+.queue-cancel-wrapper {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.retro-btn-cancel {
+  background: transparent;
+  color: #8C4020;
+  border: 1px dashed #C85A32;
+  font-size: 0.78rem;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retro-btn-cancel:hover {
+  background: rgba(200, 90, 50, 0.1);
+  border-color: #8C4020;
+  color: #6B2E15;
+}
+
 /* Retro Piksel İlerleme Çubuğu */
 .pixel-progress-bar-container {
   width: 100%;
@@ -1177,6 +1281,57 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.success-aux-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-preview {
+  background: var(--bg-parchment-light);
+  color: var(--ink-base);
+  border: var(--pixel-border);
+  box-shadow: var(--pixel-shadow-sm);
+  font-size: 0.82rem;
+  padding: 9px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: all 0.1s ease;
+}
+
+.btn-preview:hover {
+  background: #FFF;
+  transform: translateY(-1px);
+}
+
+.btn-goodreads {
+  background: #382110;
+  color: #F7F4EB;
+  border: 2px solid #2D231E;
+  box-shadow: var(--pixel-shadow-sm);
+  font-size: 0.82rem;
+  padding: 9px 16px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: all 0.1s ease;
+}
+
+.btn-goodreads:hover {
+  background: #503118;
+  color: #FFF;
+  transform: translateY(-1px);
 }
 
 .download-hint {
@@ -1483,6 +1638,160 @@ body {
   color: var(--ink-light);
 }
 
+/* ==============================================================================
+   RETRO KİTAP ÖNİZLEME MODALI
+   ============================================================================== */
+.retro-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 20, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  backdrop-filter: blur(2px);
+}
+
+.retro-modal {
+  background: var(--bg-parchment);
+  border: var(--pixel-border);
+  box-shadow: var(--pixel-shadow-lg);
+  border-radius: 6px;
+  max-width: 580px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.retro-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #2D231E;
+  color: #F7F4EB;
+  border-bottom: 2px solid #1A1410;
+}
+
+.retro-modal-title {
+  font-family: var(--font-pixel);
+  font-size: 0.80rem;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.retro-modal-close {
+  background: transparent;
+  border: none;
+  color: #DDD2C7;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.retro-modal-close:hover {
+  color: #FFF;
+}
+
+.retro-modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.retro-modal-footer {
+  padding: 10px 16px;
+  border-top: var(--pixel-border);
+  background: rgba(45, 35, 30, 0.04);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.preview-book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-book-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #FFF;
+  border: 1px solid rgba(45, 35, 30, 0.18);
+  border-radius: 4px;
+  box-shadow: var(--pixel-shadow-sm);
+  align-items: center;
+}
+
+.preview-book-num {
+  font-family: var(--font-pixel);
+  font-size: 0.85rem;
+  color: var(--accent-terracotta);
+  min-width: 22px;
+  text-align: center;
+}
+
+.preview-book-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-book-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ink-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-book-author {
+  font-size: 0.8rem;
+  color: var(--ink-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-book-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.72rem;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.preview-badge-shelf {
+  background: rgba(74, 124, 89, 0.15);
+  color: #2E5A3B;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.preview-badge-rating {
+  background: rgba(200, 90, 50, 0.15);
+  color: #A03C15;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
 /* Akıllı Telefonlar (480px altı) */
 @media (max-width: 480px) {
   .page-wrapper {
@@ -1499,8 +1808,18 @@ body {
 
   .kindle-status-bar {
     font-size: 0.65rem;
-    padding: 2px 2px 8px 2px;
+    padding: 3px 4px 10px 4px;
     gap: 4px;
+  }
+
+  .status-left, .status-right {
+    gap: 6px;
+  }
+
+  .status-icon-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.78rem;
   }
 
   .status-mode, .status-device-type {
@@ -1544,6 +1863,11 @@ body {
     flex-direction: column;
   }
 
+  .input-field-container {
+    width: 100%;
+    position: relative;
+  }
+
   .input-prefix {
     border-right: none;
     border-bottom: var(--pixel-border);
@@ -1563,6 +1887,11 @@ body {
   .retro-input {
     padding: 8px 10px;
     font-size: 0.98rem;
+  }
+
+  .input-status-icon {
+    padding: 0 10px;
+    font-size: 1.05rem;
   }
 
   .retro-btn {
@@ -1590,6 +1919,17 @@ body {
 
   .queue-info-text {
     font-size: 1.1rem;
+  }
+
+  .success-aux-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .btn-preview, .btn-goodreads {
+    width: 100%;
+    justify-content: center;
   }
 
   .step-item {
@@ -1621,6 +1961,29 @@ body {
     border-width: 2px;
   }
 
+  .kindle-status-bar {
+    padding: 2px 2px 8px 2px;
+  }
+
+  .status-left, .status-right {
+    gap: 4px;
+  }
+
+  .status-icon-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 0.72rem;
+  }
+
+  .status-time {
+    font-size: 0.68rem;
+  }
+
+  .battery-icon {
+    width: 18px;
+    height: 9px;
+  }
+
   .kindle-screen {
     padding: 12px 8px;
     gap: 14px;
@@ -1644,8 +2007,26 @@ body {
     font-size: 1.15rem;
   }
 
+  .queue-info-text {
+    font-size: 1.0rem;
+  }
+
+  .queue-eta-box {
+    font-size: 0.76rem;
+    padding: 3px 8px;
+  }
+
   .retro-btn {
     font-size: 0.72rem;
     padding: 8px 10px;
+  }
+
+  .retro-modal {
+    padding: 0;
+    max-height: 90vh;
+  }
+
+  .retro-modal-title {
+    font-size: 0.72rem;
   }
 }

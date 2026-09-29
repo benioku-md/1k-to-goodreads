@@ -27,8 +27,20 @@
     <!-- Kindle / E-Okuyucu Cihaz Çerçevesi (Masaüstünde Geniş Studio Modu) -->
     <section class="kindle-device" aria-label="E-Okuyucu Arayüzü">
       
-      <!-- Üst Durum Çubuğu (Status Bar - Sade & Sağa Yaslı) -->
+      <!-- Üst Durum Çubuğu (Status Bar - Sade & İki Yana Yaslı) -->
       <header class="kindle-status-bar" aria-label="Cihaz Durumu">
+        <div class="status-left">
+          <a href="https://www.reddit.com/user/benioku_md/" target="_blank" rel="noopener noreferrer" class="status-icon-btn" title="Reddit Profili" aria-label="Reddit Profili">
+            <i class="fa-brands fa-reddit-alien"></i>
+          </a>
+          <a href="https://github.com/benioku-md/1k-to-goodreads" target="_blank" rel="noopener noreferrer" class="status-icon-btn" title="GitHub Deposu" aria-label="GitHub Deposu">
+            <i class="fa-brands fa-github"></i>
+          </a>
+          <button type="button" id="copyLinkBtn" class="status-icon-btn" title="Bağlantıyı Kopyala" aria-label="Bağlantıyı Kopyala">
+            <i class="fa-solid fa-link"></i>
+            <span class="copy-tooltip hidden" id="copyTooltip">Kopyalandı!</span>
+          </button>
+        </div>
         <div class="status-right">
           <span id="liveClock" class="status-time">10:42</span>
           <span class="battery-icon" title="Pil Durumu: %100" aria-label="Pil %100">
@@ -106,18 +118,20 @@
                     <span class="prefix-full">1000kitap.com/</span>
                     <span class="prefix-short">1k.com/</span>
                   </span>
-                  <input 
-                    type="text" 
-                    id="usernameInput" 
-                    name="username" 
-                    class="retro-input" 
-                    placeholder="ornek: kitapkurdu" 
-                    required 
-                    spellcheck="false" 
-                    autocapitalize="none"
-                    autocomplete="off"
-                  >
-                  <span id="inputStatusIcon" class="input-status-icon hidden" aria-hidden="true"></span>
+                  <div class="input-field-container">
+                    <input 
+                      type="text" 
+                      id="usernameInput" 
+                      name="username" 
+                      class="retro-input" 
+                      placeholder="ornek: kitapkurdu" 
+                      required 
+                      spellcheck="false" 
+                      autocapitalize="none"
+                      autocomplete="off"
+                    >
+                    <span id="inputStatusIcon" class="input-status-icon hidden" aria-hidden="true"></span>
+                  </div>
                 </div>
                 <div id="usernameFeedback" class="input-feedback hidden"></div>
                 <p class="input-hint" id="inputDefaultHint">Kütüphanenizin herkese açık olduğundan emin olun.</p>
@@ -192,6 +206,10 @@
                 <span id="statusBadgeText" class="badge-text">KUYRUGA ALINDI</span>
               </div>
               <div class="queue-info-text" id="queueInfoText">Sıranız hesaplanıyor...</div>
+              <div class="queue-eta-box hidden" id="queueEtaBox">
+                <i class="fa-solid fa-hourglass-half eta-icon"></i>
+                <span id="queueEtaText">Kalan Süre: Hesaplanıyor...</span>
+              </div>
             </div>
 
             <!-- Pixel İlerleme Çubuğu -->
@@ -232,6 +250,14 @@
               <i class="fa-solid fa-bolt theme-icon"></i> Eşzamanlı hızlı aktarım devrede
             </div>
 
+            <!-- Sıradan Çık / İptal Et Butonu -->
+            <div class="queue-cancel-wrapper" id="queueCancelWrapper">
+              <button type="button" id="cancelJobBtn" class="retro-btn retro-btn-cancel">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span class="btn-text">Sıradan Çık</span>
+              </button>
+            </div>
+
           </section>
 
           <!-- Başarı ve İndirme Kartı (Başlangıçta Gizli) -->
@@ -249,6 +275,18 @@
                 <i class="fa-solid fa-cloud-arrow-down"></i>
                 <span class="btn-text">GOODREADS CSV DOSYASINI INDIR</span>
               </a>
+
+              <div class="success-aux-actions">
+                <button type="button" id="previewBtn" class="retro-btn btn-preview">
+                  <i class="fa-solid fa-table-list"></i>
+                  <span class="btn-text">Kitapları Önizle</span>
+                </button>
+                <a href="https://www.goodreads.com/review/import" target="_blank" rel="noopener noreferrer" class="retro-btn btn-goodreads">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                  <span class="btn-text">Goodreads'e Git</span>
+                </a>
+              </div>
+
               <p class="download-hint">Hazırlanan CSV dosyasını indirmek için yukarıdaki butona tıklayın.</p>
             </div>
 
@@ -403,8 +441,27 @@
       </footer>
 
     </section>
-
   </main>
+
+  <!-- Retro Kitap Önizleme Modalı -->
+  <div id="previewModal" class="retro-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewModalTitle">
+    <div class="retro-modal">
+      <div class="retro-modal-header">
+        <h3 id="previewModalTitle" class="retro-modal-title">
+          <i class="fa-solid fa-table-list"></i> Aktarılan Kitaplar (İlk 5 Önizleme)
+        </h3>
+        <button type="button" id="closePreviewBtn" class="retro-modal-close" aria-label="Kapat">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="retro-modal-body" id="previewModalBody">
+        <!-- JS ile dinamik olarak doldurulacak -->
+      </div>
+      <div class="retro-modal-footer">
+        <button type="button" id="closePreviewFooterBtn" class="retro-btn btn-secondary">Kapat</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
