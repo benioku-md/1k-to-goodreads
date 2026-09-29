@@ -479,11 +479,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (peopleAhead > 0) {
       queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-      const waitSec = jobData.estimated_seconds || (peopleAhead * 25);
+      const waitSec = jobData.estimated_seconds || (peopleAhead * 22);
       updateEtaDisplay(waitSec, 'queued', true);
     } else {
       queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
-      updateEtaDisplay(0, 'queued', false); // Kendi işlemi başlayınca kum saati gelecek
+      const waitSec = jobData.estimated_seconds || 3;
+      updateEtaDisplay(waitSec, 'queued', true);
     }
 
     progressBar.style.width = '3%';
@@ -577,11 +578,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (peopleAhead > 0) {
         queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-        const waitSec = data.estimated_seconds || (peopleAhead * 25);
+        const waitSec = data.estimated_seconds || (peopleAhead * 22);
         updateEtaDisplay(waitSec, 'queued', true);
       } else {
         queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
-        updateEtaDisplay(0, 'queued', false); // Kum saati işlem başlayınca gelecek!
+        const waitSec = data.estimated_seconds || 3;
+        updateEtaDisplay(waitSec, 'queued', true);
       }
       return;
     }

@@ -145,7 +145,7 @@ def is_job_running_active(job_id_to_check: Optional[str], exclude_job_id: Option
     job = JOBS.get(job_id_to_check)
     if not job or job.cancelled:
         return False
-    return job.status not in ("completed", "failed", "cancelled", "queued")
+    return job.status not in ("completed", "failed", "cancelled")
 
 def validate_username(username: str) -> Tuple[bool, str]:
     """1000Kitap kullanıcı adı kurallarını doğrular."""
@@ -938,6 +938,7 @@ async def queue_worker():
 
         try:
             CURRENT_RUNNING_JOB_ID = job_id
+            job.status = "scraping"
             # Sıradaki diğer bekleyen işlerin pozisyonlarını güncelle
             if job_id in ACTIVE_QUEUE_LIST:
                 ACTIVE_QUEUE_LIST.remove(job_id)
@@ -1113,16 +1114,16 @@ async def create_export_job(payload: ExportRequest, request: Request):
 
     if people_ahead == 0:
         job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
-        job.estimated_seconds = 0
+        job.estimated_seconds = 3
     else:
         job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
         if running_active:
             act = JOBS.get(CURRENT_RUNNING_JOB_ID)
-            rem_act = max(0, act.total_count - act.current_count) if (act and act.total_count > 0) else 25
+            rem_act = max(10, act.total_count - act.current_count) if (act and act.total_count > 0) else 180
             act_sec = math.ceil(rem_act / 9) + 1
         else:
             act_sec = 0
-        job.estimated_seconds = act_sec + (max(0, people_ahead - 1) * 25)
+        job.estimated_seconds = act_sec + (max(0, people_ahead - 1) * 22)
 
     await JOB_QUEUE.put(job_id)
 

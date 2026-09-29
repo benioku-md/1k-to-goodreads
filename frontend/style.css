@@ -138,10 +138,26 @@ body {
   user-select: none;
 }
 
-.status-left, .status-right {
+.status-left {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.status-right {
+  display: block;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.status-right > * {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.status-right > *:first-child {
+  margin-left: 0;
 }
 
 .status-icon-btn {
