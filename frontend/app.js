@@ -75,11 +75,110 @@ document.addEventListener('DOMContentLoaded', () => {
   const countDisplay = document.getElementById('countDisplay');
   const percentDisplay = document.getElementById('percentDisplay');
 
-  // Canlı İşlenen Tek Kitap Şeridi Elemanları
+  // Canlı Taranan Görsel Kitap Kartı Elemanları
+  const liveBookCard = document.getElementById('liveBookCard');
+  const liveBookCover = document.getElementById('liveBookCover');
+  const liveBookTitle = document.getElementById('liveBookTitle');
+  const liveBookAuthor = document.getElementById('liveBookAuthor');
+  const bookCoverWrapper = document.getElementById('bookCoverWrapper');
+  const bookPlaceholderIcon = document.getElementById('bookPlaceholderIcon');
+
+  // Canlı İşlenen Kitap Şeridi (Ayrı Terminal) Elemanları
   const liveBookTicker = document.getElementById('liveBookTicker');
   const liveTickerIsbn = document.getElementById('liveTickerIsbn');
   const liveTickerTitle = document.getElementById('liveTickerTitle');
   const liveTickerAuthor = document.getElementById('liveTickerAuthor');
+
+  // Ticker Sırası ve Teker Teker Akış Motoru
+  const tickerQueue = [];
+  let tickerTimer = null;
+  let currentlyDisplayedTickerBook = null;
+  const seenTickerTitles = new Set();
+
+  function resetTickerEngine() {
+    tickerQueue.length = 0;
+    if (tickerTimer) {
+      clearTimeout(tickerTimer);
+      tickerTimer = null;
+    }
+    currentlyDisplayedTickerBook = null;
+    seenTickerTitles.clear();
+    if (liveBookTicker) liveBookTicker.classList.add('hidden');
+    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+    if (liveTickerTitle) liveTickerTitle.textContent = '';
+    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
+  }
+
+  function enqueueTickerBook(book) {
+    if (!book || !book.title) return;
+    const titleKey = book.title.trim().toLowerCase();
+
+    // Sırada bekleyen varsa ve yeni gelen veride ISBN çözüldüyse sıradakinin ISBN'ini güncelle
+    const existing = tickerQueue.find(b => b.title.trim().toLowerCase() === titleKey);
+    if (existing) {
+      if (book.isbn && (!existing.isbn || existing.isbn === 'Bulunamadı')) {
+        existing.isbn = book.isbn;
+      }
+      return;
+    }
+
+    // Şu an ekranda gösterilen kitapsa ve ISBN'i yeni çözüldüyse anında güncelle
+    if (currentlyDisplayedTickerBook && currentlyDisplayedTickerBook.title.trim().toLowerCase() === titleKey) {
+      if (book.isbn && (!currentlyDisplayedTickerBook.isbn || currentlyDisplayedTickerBook.isbn === 'Bulunamadı')) {
+        currentlyDisplayedTickerBook.isbn = book.isbn;
+        renderTickerBook(currentlyDisplayedTickerBook);
+      }
+      return;
+    }
+
+    // Daha önce işlenmediyse veya ISBN bilgisiyle geldiyse kuyruğa ekle
+    if (!seenTickerTitles.has(titleKey) || book.isbn) {
+      seenTickerTitles.add(titleKey);
+      tickerQueue.push({
+        title: book.title,
+        author: book.author || '',
+        isbn: book.isbn || ''
+      });
+
+      if (!tickerTimer) {
+        stepTickerQueue();
+      }
+    }
+  }
+
+  function renderTickerBook(book) {
+    if (!book) return;
+    if (liveTickerTitle) liveTickerTitle.textContent = book.title;
+    if (liveTickerAuthor) liveTickerAuthor.textContent = book.author ? `— ${book.author}` : '';
+
+    if (liveTickerIsbn) {
+      if (book.isbn && String(book.isbn).trim() !== '' && book.isbn !== 'Bulunamadı') {
+        liveTickerIsbn.textContent = `ISBN: ${book.isbn}`;
+      } else if (book.isbn === 'Bulunamadı') {
+        liveTickerIsbn.textContent = 'ISBN: —';
+      } else {
+        liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+      }
+      liveTickerIsbn.style.display = 'inline-block';
+    }
+
+    if (liveBookTicker) liveBookTicker.classList.remove('hidden');
+  }
+
+  function stepTickerQueue() {
+    if (tickerQueue.length === 0) {
+      tickerTimer = null;
+      return;
+    }
+
+    const nextBook = tickerQueue.shift();
+    currentlyDisplayedTickerBook = nextBook;
+    renderTickerBook(nextBook);
+
+    // Kullanıcının talimatı: "2 saniye önce mi çözüldü? tamam onu yansıt milisaniyelik olmak zorunda değil, teker teker alıp yansıtacak"
+    const delay = tickerQueue.length > 8 ? 850 : (tickerQueue.length > 3 ? 1200 : 1700);
+    tickerTimer = setTimeout(stepTickerQueue, delay);
+  }
 
   // Tamamlanma & İndirme Elemanları
   const finalCount = document.getElementById('finalCount');
@@ -375,6 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (queueEtaBox) {
       queueEtaBox.classList.add('hidden');
     }
+    resetTickerEngine();
   }
 
   // State for silent auto-retry
@@ -490,10 +590,15 @@ document.addEventListener('DOMContentLoaded', () => {
     countDisplay.textContent = '0 / --';
     percentDisplay.textContent = '%0';
 
-    if (liveBookTicker) liveBookTicker.classList.add('hidden');
-    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
-    if (liveTickerTitle) liveTickerTitle.textContent = '';
-    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
+    if (liveBookCard) liveBookCard.classList.add('hidden');
+    if (liveBookCover) {
+      liveBookCover.classList.add('hidden');
+      liveBookCover.src = '';
+    }
+    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
+    if (liveBookTitle) liveBookTitle.textContent = '';
+    if (liveBookAuthor) liveBookAuthor.textContent = '';
+    resetTickerEngine();
   }
 
   // ============================================================================
@@ -645,23 +750,35 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       updateEtaDisplay(etaSec, data.status || 'scraping', false);
 
-      // Canlı işlenen tek kitap şeridini anında ve milisaniyelik güncelle
+      // 1. Canlı Taranan Görsel Kitap Kartını Güncelle (Kapak + Başlık + Yazar)
       const lastBook = data.last_book;
       if (lastBook && lastBook.title) {
-        if (liveTickerTitle) liveTickerTitle.textContent = lastBook.title;
-        if (liveTickerAuthor) liveTickerAuthor.textContent = lastBook.author ? `— ${lastBook.author}` : '';
+        if (liveBookTitle) liveBookTitle.textContent = lastBook.title;
+        if (liveBookAuthor) liveBookAuthor.textContent = lastBook.author || 'Bilinmeyen Yazar';
 
-        if (liveTickerIsbn) {
-          if (lastBook.isbn && String(lastBook.isbn).trim() !== '') {
-            liveTickerIsbn.textContent = `ISBN: ${lastBook.isbn}`;
-            liveTickerIsbn.style.display = 'inline-block';
-          } else {
-            liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
-            liveTickerIsbn.style.display = 'inline-block';
-          }
+        if (lastBook.cover && liveBookCover) {
+          liveBookCover.src = lastBook.cover;
+          liveBookCover.classList.remove('hidden');
+          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.add('hidden');
+        } else if (liveBookCover) {
+          liveBookCover.classList.add('hidden');
+          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
         }
+        if (liveBookCard) liveBookCard.classList.remove('hidden');
+      }
 
-        if (liveBookTicker) liveBookTicker.classList.remove('hidden');
+      // 2. Canlı İşlenen Kitap Şeridini (Ayrı Terminal) Güncelle
+      // Çözülen veya işlenen kitapları teker teker okunabilir akışla gösterir
+      if (data.resolved_book) {
+        enqueueTickerBook(data.resolved_book);
+      }
+      if (Array.isArray(data.recent_books)) {
+        for (const rb of data.recent_books) {
+          enqueueTickerBook(rb);
+        }
+      }
+      if (lastBook) {
+        enqueueTickerBook(lastBook);
       }
       return;
     }
@@ -758,10 +875,12 @@ document.addEventListener('DOMContentLoaded', () => {
   resetBtn.addEventListener('click', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
-    if (liveBookTicker) liveBookTicker.classList.add('hidden');
-    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
-    if (liveTickerTitle) liveTickerTitle.textContent = '';
-    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
+    if (liveBookCard) liveBookCard.classList.add('hidden');
+    if (liveBookCover) {
+      liveBookCover.classList.add('hidden');
+      liveBookCover.src = '';
+    }
+    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
     usernameInput.value = '';
     handleUsernameValidation();
     const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');

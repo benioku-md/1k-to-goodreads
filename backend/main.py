@@ -113,6 +113,7 @@ class JobState:
             "total_count": self.total_count,
             "percent": self.percent,
             "last_book": self.last_book,
+            "resolved_book": self.recent_books[0] if self.recent_books else None,
             "recent_books": self.recent_books,
             "preview_books": self.preview_books,
             "error_message": self.error_message
@@ -610,7 +611,8 @@ async def scrape_user_books(job: JobState):
                     "percent": pct_isbn,
                     "estimated_seconds": eta_sec,
                     "last_book": job.last_book,
-                    "recent_books": job.recent_books
+                    "recent_books": job.recent_books,
+                    "resolved_book": recent_entry if raw_title else None
                 })
 
         shelves_to_process = []

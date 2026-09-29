@@ -1175,7 +1175,119 @@ body {
   line-height: 1.2;
 }
 
-/* Tek ve Hızlı Canlı İşlenen Kitap Şeridi (Minimalist Ticker) */
+/* Canlı Taranan Kitap Görsel Kartı (Kapak + Açıklama) */
+.live-book-preview {
+  background: var(--bg-parchment-deep);
+  border: 1px dashed var(--ink-light);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-book-preview.hidden {
+  display: none !important;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preview-label {
+  font-family: var(--font-pixel);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--accent-terracotta);
+  letter-spacing: 0.5px;
+}
+
+.preview-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cover-wrapper {
+  position: relative;
+  width: 44px;
+  height: 62px;
+  border: var(--pixel-border);
+  background: #FFF;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.book-placeholder-icon {
+  font-size: 1.25rem;
+  color: var(--ink-muted);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.book-placeholder-icon.hidden {
+  display: none !important;
+}
+
+.book-cover-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  z-index: 2;
+  background: #FFF;
+}
+
+.book-cover-img.hidden {
+  display: none !important;
+}
+
+.book-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.book-title {
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--ink-espresso);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-author {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tek ve Canlı İşlenen Kitap Şeridi (Ayrı Terminal Konumu) */
 .live-book-ticker {
   background: var(--bg-parchment-deep);
   border: 1px dashed var(--ink-light);

@@ -233,7 +233,24 @@
               </div>
             </div>
 
-            <!-- Tek ve Hızlı Canlı İşlenen Kitap Şeridi -->
+            <!-- Canlı Taranan Kitap Görsel Kartı (Kapak + Açıklama) -->
+            <div id="liveBookCard" class="live-book-preview hidden">
+              <div class="preview-header">
+                <span class="preview-label">ŞU AN TARANAN KİTAP:</span>
+              </div>
+              <div class="preview-content">
+                <div class="cover-wrapper" id="bookCoverWrapper">
+                  <i id="bookPlaceholderIcon" class="fa-solid fa-book-open book-placeholder-icon"></i>
+                  <img id="liveBookCover" src="" alt="Kitap Kapağı" class="book-cover-img hidden" loading="lazy">
+                </div>
+                <div class="book-details">
+                  <div id="liveBookTitle" class="book-title">Kitap Adı</div>
+                  <div id="liveBookAuthor" class="book-author">Yazar Adı</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Canlı İşlenen Kitap Şeridi (Ayrı Terminal Konumu) -->
             <div id="liveBookTicker" class="live-book-ticker hidden">
               <div class="ticker-header-mini">
                 <span class="ticker-pulse-dot"></span>
