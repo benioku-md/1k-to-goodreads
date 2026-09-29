@@ -634,9 +634,87 @@ async def scrape_user_books(job: JobState):
                 ("okuyacaklari", "to-read", "Okumak İstediklerim")
             ]
 
+        # 1. Kütüphane Ön Doğrulama: Kullanıcının kütüphanesi (okudukları rafı) herkese açık mı?
+        # Kullanıcının şu an okuduğu kitap herkese açık olsa dahi, kütüphanesi gizli ise işlem başlatılamaz!
+        job.message = "Kütüphane gizlilik ve erişim durumu doğrulanıyor..."
+        await job.broadcast({
+            "type": "progress",
+            "status": "validating_library",
+            "message": job.message,
+            "current": 0,
+            "total": 0,
+            "percent": 0
+        })
+
+        verify_params = {
+            "kadi": job.username,
+            "raf": "okuduklari",
+            "sayfa": 1,
+            "appVersion": "2.60.60",
+            "os": "android",
+            "hl": "tr"
+        }
+
+        verify_resp = None
+        for retry in range(2):
+            if job.cancelled:
+                raise Exception("İşlem kullanıcı tarafından iptal edildi.")
+            try:
+                verify_resp = await session.get(url, params=verify_params, headers=headers, timeout=6.0)
+                if verify_resp.status_code in (403, 429):
+                    if retry == 0:
+                        await asyncio.sleep(1.0)
+                        try:
+                            await session.close()
+                        except Exception:
+                            pass
+                        session = cffi_requests.AsyncSession(impersonate="chrome120")
+                        headers["1-CIHAZ-KODU"] = generate_device_code()
+                        continue
+                    break
+                break
+            except Exception as net_err:
+                if retry == 1:
+                    raise net_err
+                await asyncio.sleep(0.5)
+
+        if verify_resp is None or verify_resp.status_code != 200:
+            code = verify_resp.status_code if verify_resp else "Bilinmiyor"
+            if code == 404:
+                raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+            raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
+
+        verify_data = verify_resp.json()
+        if verify_data.get("hata") == 1:
+            msg = verify_data.get("hataMesaji") or verify_data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+            raise Exception(f"1000Kitap Bildirimi: {msg}")
+
+        if "bilgi" in verify_data and verify_data["bilgi"] == 0:
+            msg = verify_data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
+            raise Exception(f"1000Kitap Bildirimi: {msg}")
+
+        verify_sonuc = verify_data.get("_sonuc")
+        if not verify_sonuc:
+            raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
+
+        verify_hata = verify_sonuc.get("hataMetni")
+        if verify_hata:
+            vh_lower = str(verify_hata).lower()
+            if "sadece okurun kendisi" in vh_lower or "görebilir" in vh_lower or "gizli" in vh_lower:
+                raise Exception(
+                    "Bu kullanıcının kütüphanesi gizlidir (Sadece okurun kendisi görebilir). "
+                    "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
+                    "kütüphanenizi herkese açık yapıp tekrar deneyin."
+                )
+            else:
+                raise Exception(f"1000Kitap Bildirimi: {verify_hata}")
+
+        # Kütüphane doğrulandıktan sonra inceleme ve ISBN işçilerini başlat
         review_task = None
         if job.include_reviews:
             review_task = asyncio.create_task(fetch_user_reviews(session, job.username, headers))
+
+        cached_first_page_sonuc = verify_sonuc
 
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, limits=ky_limits) as ky_client:
@@ -652,66 +730,68 @@ async def scrape_user_books(job: JobState):
                     if job.cancelled:
                         raise Exception("İşlem kullanıcı tarafından iptal edildi.")
 
-                    params = {
-                        "kadi": job.username,
-                        "raf": shelf_slug,
-                        "sayfa": page,
-                        "appVersion": "2.60.60",
-                        "os": "android",
-                        "hl": "tr"
-                    }
-                    if kume:
-                        params["kume"] = kume
+                    if shelf_slug == "okuduklari" and page == 1 and cached_first_page_sonuc is not None:
+                        sonuc = cached_first_page_sonuc
+                        cached_first_page_sonuc = None
+                    else:
+                        params = {
+                            "kadi": job.username,
+                            "raf": shelf_slug,
+                            "sayfa": page,
+                            "appVersion": "2.60.60",
+                            "os": "android",
+                            "hl": "tr"
+                        }
+                        if kume:
+                            params["kume"] = kume
 
-                    response = None
-                    for retry in range(2):
-                        if job.cancelled:
-                            raise Exception("İşlem kullanıcı tarafından iptal edildi.")
-                        try:
-                            response = await session.get(url, params=params, headers=headers, timeout=6.0)
-                            if response.status_code in (403, 429):
-                                if retry == 0:
-                                    await asyncio.sleep(1.0)
-                                    try:
-                                        await session.close()
-                                    except Exception:
-                                        pass
-                                    session = cffi_requests.AsyncSession(impersonate="chrome120")
-                                    headers["1-CIHAZ-KODU"] = generate_device_code()
-                                    continue
+                        response = None
+                        for retry in range(2):
+                            if job.cancelled:
+                                raise Exception("İşlem kullanıcı tarafından iptal edildi.")
+                            try:
+                                response = await session.get(url, params=params, headers=headers, timeout=6.0)
+                                if response.status_code in (403, 429):
+                                    if retry == 0:
+                                        await asyncio.sleep(1.0)
+                                        try:
+                                            await session.close()
+                                        except Exception:
+                                            pass
+                                        session = cffi_requests.AsyncSession(impersonate="chrome120")
+                                        headers["1-CIHAZ-KODU"] = generate_device_code()
+                                        continue
+                                    break
                                 break
-                            break
-                        except Exception as net_err:
-                            if retry == 1:
-                                raise net_err
-                            await asyncio.sleep(0.5)
+                            except Exception as net_err:
+                                if retry == 1:
+                                    raise net_err
+                                await asyncio.sleep(0.5)
 
-                    if response is None or response.status_code != 200:
-                        code = response.status_code if response else "Bilinmiyor"
-                        if code == 404:
-                            raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
-                        raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
+                        if response is None or response.status_code != 200:
+                            code = response.status_code if response else "Bilinmiyor"
+                            if code == 404:
+                                raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+                            raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
-                    data = response.json()
+                        data = response.json()
 
-                    if data.get("hata") == 1:
-                        msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
-                        raise Exception(f"1000Kitap Bildirimi: {msg}")
+                        if data.get("hata") == 1:
+                            msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+                            raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-                    if "bilgi" in data and data["bilgi"] == 0:
-                        msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
-                        raise Exception(f"1000Kitap Bildirimi: {msg}")
+                        if "bilgi" in data and data["bilgi"] == 0:
+                            msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
+                            raise Exception(f"1000Kitap Bildirimi: {msg}")
 
-                    sonuc = data.get("_sonuc")
-                    if not sonuc:
-                        raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
+                        sonuc = data.get("_sonuc")
+                        if not sonuc:
+                            raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
 
                     hata_metni = sonuc.get("hataMetni")
                     if hata_metni:
                         hata_lower = str(hata_metni).lower()
                         if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
-                            if len(shelves_to_process) > 1:
-                                break
                             raise Exception(
                                 f"Bu kullanıcının '{shelf_display}' rafı gizlidir (Sadece okurun kendisi görebilir). "
                                 "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "

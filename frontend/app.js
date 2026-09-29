@@ -600,11 +600,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const isScraping = data.status === 'scraping' || (data.status && data.status.startsWith('scraping_')) || data.type === 'progress' || data.type === 'status';
 
     if (isReviews || isIsbnResolving || isScraping) {
-      if (isReviews) {
-        statusBadgeText.textContent = 'İNCELEMELER ALINIYOR';
+      if (data.status === 'validating_library' || (data.message && data.message.includes('doğrulanıyor'))) {
+        statusBadgeText.textContent = 'DOGRULANIYOR';
+        statusBadge.style.borderColor = 'var(--ink-charcoal)';
+      } else if (isReviews) {
+        statusBadgeText.textContent = 'INCELEMELER ALINIYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else if (isIsbnResolving) {
-        statusBadgeText.textContent = 'ISBN ÇÖZÜLÜYOR';
+        statusBadgeText.textContent = 'ISBN COZULUYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
       } else if (data.status === 'scraping_read' || data.shelf_display === 'Okuduklarım' || (data.message && data.message.includes('Okuduklarım'))) {
         statusBadgeText.textContent = 'OKUDUKLARIM TARANIYOR';
@@ -616,7 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBadgeText.textContent = 'OKUNANLAR TARANIYOR';
         statusBadge.style.borderColor = 'var(--accent-sage)';
       } else {
-        statusBadgeText.textContent = 'KİTAPLAR TARANIYOR';
+        statusBadgeText.textContent = 'KITAPLAR TARANIYOR';
         statusBadge.style.borderColor = 'var(--accent-sage)';
       }
 
