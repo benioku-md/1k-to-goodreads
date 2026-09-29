@@ -843,26 +843,37 @@ async def scrape_user_books(job: JobState):
 
                         if data.get("hata") == 1:
                             msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
+                            if len(shelves_to_process) > 1 or len(collected_books) > 0:
+                                break
                             raise Exception(f"1000Kitap Bildirimi: {msg}")
 
                         if "bilgi" in data and data["bilgi"] == 0:
                             msg = data.get("bilgiMesaji", "Profil bulunamadı veya gizli.")
+                            if len(shelves_to_process) > 1 or len(collected_books) > 0:
+                                break
                             raise Exception(f"1000Kitap Bildirimi: {msg}")
 
                         sonuc = data.get("_sonuc")
                         if not sonuc:
+                            if len(shelves_to_process) > 1 or len(collected_books) > 0:
+                                break
                             raise Exception("1000Kitap API yanıtı boş veya geçersiz format.")
 
                     hata_metni = sonuc.get("hataMetni")
                     if hata_metni:
                         hata_lower = str(hata_metni).lower()
                         if "sadece okurun kendisi" in hata_lower or "görebilir" in hata_lower or "gizli" in hata_lower:
+                            # Şayet birden fazla raf taranıyorsa veya zaten kitap toplanmışsa bu gizli rafı sessizce atla!
+                            if len(shelves_to_process) > 1 or len(collected_books) > 0:
+                                break
                             raise Exception(
                                 f"Bu kullanıcının '{shelf_display}' rafı gizlidir (Sadece okurun kendisi görebilir). "
                                 "Aktarım yapabilmek için 1000Kitap Profil Ayarları ➔ Gizlilik bölümünden "
                                 "ilgili rafı herkese açık yapıp tekrar deneyin."
                             )
                         else:
+                            if len(shelves_to_process) > 1 or len(collected_books) > 0:
+                                break
                             raise Exception(f"1000Kitap Bildirimi: {hata_metni}")
 
                     if shelf_idx == 0 and page == 1:
@@ -979,8 +990,7 @@ async def scrape_user_books(job: JobState):
                 )
 
             total_books = len(collected_books)
-            if job.total_count < total_books:
-                job.total_count = total_books
+            job.total_count = total_books
 
             # İşçilere bitiş sinyali gönder ve hepsinin tamamlanmasını bekle
             for _ in range(10):
