@@ -105,6 +105,22 @@ class JobState:
 JOBS: Dict[str, JobState] = {}
 JOB_QUEUE: asyncio.Queue = asyncio.Queue()
 ACTIVE_QUEUE_LIST: List[str] = []
+IP_REQUEST_TIMESTAMPS: Dict[str, List[float]] = {}
+RATE_LIMIT_WINDOW = 60.0  # 60 saniye
+MAX_REQUESTS_PER_WINDOW = 3  # IP başına dakikada maksimum 3 görev oluşturma isteği
+USERNAME_REGEX = re.compile(r'^[a-zA-Z0-9_]{1,50}$')
+
+def get_client_ip(request: Request) -> str:
+    """İstemcinin gerçek IP adresini tespit eder (Cloudflare Tunnel, Proxy veya Doğrudan)."""
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    x_forwarded = request.headers.get("x-forwarded-for")
+    if x_forwarded:
+        return x_forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 def generate_device_code(length: int = 14) -> str:
     """1000Kitap için geçerli formata uygun cihaz kodu üretir."""
@@ -822,11 +838,12 @@ async def queue_worker():
                 if waiting_job and waiting_job.status == "queued":
                     waiting_job.queue_position = idx + 1
                     wait_count = waiting_job.queue_position - 1
-                    msg = f"Sıradasınız (Önünüzde {wait_count} kişi var)..." if wait_count > 0 else "Sıradaki işlem sizin, aktarım başlıyor..."
+                    msg = f"Kuyruktasınız (Önünüzde {wait_count} kişi var)..." if wait_count > 0 else "Sıradaki işlem sizin, aktarım başlıyor..."
                     await waiting_job.broadcast({
                         "type": "queued",
                         "status": "queued",
                         "position": waiting_job.queue_position,
+                        "queue_position": waiting_job.queue_position,
                         "message": msg
                     })
 
@@ -865,7 +882,21 @@ async def cleanup_worker():
         ]
         for jid in expired:
             JOBS.pop(jid, None)
-        if expired:
+            if jid in ACTIVE_QUEUE_LIST:
+                ACTIVE_QUEUE_LIST.remove(jid)
+
+        # IP rate limiter temizliği (penceresi geçmiş kayıtları bellekten at)
+        expired_ips = []
+        for ip, timestamps in list(IP_REQUEST_TIMESTAMPS.items()):
+            active_ts = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+            if active_ts:
+                IP_REQUEST_TIMESTAMPS[ip] = active_ts
+            else:
+                expired_ips.append(ip)
+        for ip in expired_ips:
+            IP_REQUEST_TIMESTAMPS.pop(ip, None)
+
+        if expired or expired_ips:
             gc.collect()
 
 # ==============================================================================
@@ -898,11 +929,56 @@ app.add_middleware(
 )
 
 @app.post("/api/jobs")
-async def create_export_job(payload: ExportRequest):
+async def create_export_job(payload: ExportRequest, request: Request):
     """Yeni aktarma görevi oluşturur ve FIFO kuyruğuna ekler."""
-    username = payload.username.strip().lower()
-    if not username:
-        raise HTTPException(status_code=400, detail="Lütfen geçerli bir 1000Kitap kullanıcı adı girin.")
+    raw_user = (payload.username or "").strip()
+    if raw_user.startswith("@"):
+        raw_user = raw_user[1:]
+    if "1000kitap.com/" in raw_user:
+        try:
+            raw_user = raw_user.split("1000kitap.com/")[1].split("/")[0].split("?")[0]
+        except Exception:
+            pass
+    username = raw_user.strip().lower()
+
+    # 1. Kullanıcı adı kuralı (Sadece İngilizce harfler, rakamlar ve alt tire)
+    if not username or not USERNAME_REGEX.match(username):
+        raise HTTPException(
+            status_code=400,
+            detail="Geçersiz kullanıcı adı. Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır."
+        )
+
+    # 2. IP Bazlı İstek Sınırı (Rate Limiting - Dakikada en fazla 3 istek)
+    client_ip = get_client_ip(request)
+    now = time.time()
+    timestamps = IP_REQUEST_TIMESTAMPS.get(client_ip, [])
+    timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+    if len(timestamps) >= MAX_REQUESTS_PER_WINDOW:
+        wait_seconds = max(1, int(RATE_LIMIT_WINDOW - (now - timestamps[0])))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Çok sık istek gönderdiniz. Lütfen {wait_seconds} saniye bekledikten sonra tekrar deneyin."
+        )
+    timestamps.append(now)
+    IP_REQUEST_TIMESTAMPS[client_ip] = timestamps
+
+    # 3. Mükerrer Kuyruk Koruması (Aynı kullanıcı adı zaten kuyrukta veya aktif işlemde mi?)
+    for q_id in list(ACTIVE_QUEUE_LIST):
+        existing_job = JOBS.get(q_id)
+        if existing_job and existing_job.username == username:
+            wait_pos = existing_job.queue_position
+            raise HTTPException(
+                status_code=409,
+                detail=f"'{username}' kullanıcısı için zaten kuyrukta bekleyen bir işlem bulunmaktadır (Sıra: #{wait_pos})."
+            )
+
+    active_statuses = ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky")
+    for jid, j in list(JOBS.items()):
+        if j.username == username and j.status in active_statuses:
+            raise HTTPException(
+                status_code=409,
+                detail=f"'{username}' kullanıcısının kitaplığı şu anda taranıyor. Lütfen mevcut işlemin tamamlanmasını bekleyin."
+            )
 
     job_id = uuid.uuid4().hex
     job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
@@ -916,7 +992,7 @@ async def create_export_job(payload: ExportRequest):
     return {
         "job_id": job_id,
         "queue_position": job.queue_position,
-        "message": f"Kuyruğa alındı. Sıranız: {job.queue_position}"
+        "message": f"Kuyruğa alındı. Sıranız: #{job.queue_position}"
     }
 
 @app.get("/api/jobs/{job_id}/status")

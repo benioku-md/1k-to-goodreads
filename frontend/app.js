@@ -124,22 +124,39 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function cleanUsernameInput(rawInput) {
-    let clean = rawInput.trim();
-    // @ sembolünü kaldır
+  const USERNAME_REGEX = /^[a-zA-Z0-9_]{1,50}$/;
+  const STORAGE_KEY = 'active_1k_job';
+
+  function extractUsername(rawInput) {
+    let clean = (rawInput || '').trim();
     if (clean.startsWith('@')) {
       clean = clean.substring(1);
     }
-    // URL girildiyse (örn: https://1000kitap.com/kullanici_adi) kullanıcı adını ayıkla
     try {
       if (clean.includes('1000kitap.com/')) {
         const parts = clean.split('1000kitap.com/');
         clean = parts[1].split('/')[0].split('?')[0];
       }
-    } catch (e) {
-      // Hata olursa ham halini kullan
-    }
-    return clean.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+    } catch (e) {}
+    return clean.trim();
+  }
+
+  function saveActiveJobToStorage(jobId, username, shelf, includeReviews) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        jobId,
+        username,
+        shelf,
+        includeReviews,
+        savedAt: Date.now()
+      }));
+    } catch (e) {}
+  }
+
+  function clearActiveJobFromStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {}
   }
 
   function cleanupActiveStreams() {
@@ -180,11 +197,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `Sunucu hatası (${response.status})`);
+        const err = new Error(errData.detail || `Sunucu hatası (${response.status})`);
+        err.status = response.status;
+        throw err;
       }
 
       const data = await response.json();
       currentJobId = data.job_id;
+
+      // Tarayıcı hafızasına kaydet (F5 veya sayfa yenilemede oturumu korumak için)
+      saveActiveJobToStorage(currentJobId, username, shelf, includeReviews);
 
       // İlerleme ekranını hazırla
       initProgressView(data);
@@ -195,6 +217,12 @@ document.addEventListener('DOMContentLoaded', () => {
       startFallbackPolling(currentJobId);
 
     } catch (err) {
+      // 4xx istemci hatalarında (geçersiz kullanıcı adı, rate limit, mükerrer kuyruk vb.) otomatik retry yapma, kullanıcıya göster
+      if (err.status && err.status >= 400 && err.status < 500) {
+        showError(err.message);
+        return;
+      }
+
       if (autoRetryCount < MAX_AUTO_RETRIES) {
         autoRetryCount++;
         if (queueInfoText) queueInfoText.textContent = 'Bağlantı kuruluyor, lütfen bekleyin...';
@@ -217,12 +245,18 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
 
     const rawUsername = usernameInput.value;
-    const username = cleanUsernameInput(rawUsername);
+    const username = extractUsername(rawUsername);
     const shelf = getSelectedShelf();
     const includeReviews = includeReviewsCheckbox ? includeReviewsCheckbox.checked : false;
 
     if (!username) {
       alert('Lütfen geçerli bir 1000Kitap kullanıcı adı girin.');
+      usernameInput.focus();
+      return;
+    }
+
+    if (!USERNAME_REGEX.test(username)) {
+      alert('Kullanıcı adınızda alt tire (_) dışında özel karakter ve Türkçe karakter olmamalıdır.');
       usernameInput.focus();
       return;
     }
@@ -235,11 +269,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // İLERLEME EKRANI BAŞLATICI
   // ============================================================================
   function initProgressView(jobData) {
-    statusBadgeText.textContent = jobData.queue_position > 1 ? 'SIRADA' : 'BAŞLATILIYOR';
-    statusBadge.style.borderColor = 'var(--ink-espresso)';
-    queueInfoText.textContent = jobData.queue_position > 1 
-      ? `Sıradasınız (Önünüzde ${jobData.queue_position - 1} kişi var)...` 
-      : 'Sıradaki işlem sizin, aktarım başlatılıyor...';
+    const pos = jobData.queue_position !== undefined ? jobData.queue_position : (jobData.position !== undefined ? jobData.position : 1);
+    const waitCount = pos - 1;
+    if (waitCount > 0) {
+      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+      queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
+    } else {
+      statusBadgeText.textContent = 'BAŞLATILIYOR';
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+      queueInfoText.textContent = jobData.message || 'Sıradaki işlem sizin, aktarım başlatılıyor...';
+    }
 
     progressBar.style.width = '3%';
     progressBar.setAttribute('aria-valuenow', '3');
@@ -317,9 +357,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const pos = data.position !== undefined ? data.position : (data.queue_position !== undefined ? data.queue_position : 1);
       const waitCount = pos - 1;
       if (waitCount > 0) {
-        statusBadgeText.textContent = 'SIRADA';
+        statusBadgeText.textContent = `SIRANIZ: #${pos}`;
         statusBadge.style.borderColor = 'var(--ink-espresso)';
-        queueInfoText.textContent = `Sıradasınız (Önünüzde ${waitCount} kişi var)...`;
+        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
         return;
       }
       statusBadgeText.textContent = 'BAŞLATILIYOR';
@@ -461,12 +501,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // HATA VE SIFIRLAMA YÖNETİMİ
   // ============================================================================
   function showError(msg) {
+    clearActiveJobFromStorage();
     cleanupActiveStreams();
     errorMessage.textContent = msg;
     showSection(errorSection);
   }
 
   resetBtn.addEventListener('click', () => {
+    clearActiveJobFromStorage();
     cleanupActiveStreams();
     usernameInput.value = '';
     const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');
@@ -479,9 +521,61 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   retryBtn.addEventListener('click', () => {
+    clearActiveJobFromStorage();
     cleanupActiveStreams();
     showSection(formSection);
     usernameInput.focus();
   });
+
+  // ============================================================================
+  // SAYFA YENİLEME VE DEVAM EDEN GÖREVİ GERİ YÜKLEME (LocalStorage)
+  // ============================================================================
+  async function checkSavedActiveJob() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (!parsed || !parsed.jobId) {
+        clearActiveJobFromStorage();
+        return;
+      }
+
+      // 15 dakikadan eskiyse süresi dolmuştur, temizle
+      if (Date.now() - (parsed.savedAt || 0) > 15 * 60 * 1000) {
+        clearActiveJobFromStorage();
+        return;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${parsed.jobId}/status`);
+      if (!res.ok) {
+        clearActiveJobFromStorage();
+        return;
+      }
+
+      const data = await res.json();
+      currentJobId = parsed.jobId;
+      currentUsername = parsed.username || '';
+      currentShelf = parsed.shelf || 'hepsi';
+      currentIncludeReviews = !!parsed.includeReviews;
+
+      if (data.status === 'completed') {
+        showSection(completedSection);
+        handleJobUpdate(data);
+      } else if (data.status === 'failed') {
+        clearActiveJobFromStorage();
+      } else {
+        initProgressView(data);
+        showSection(progressSection);
+        handleJobUpdate(data);
+        startEventStream(currentJobId);
+        startFallbackPolling(currentJobId);
+      }
+    } catch (e) {
+      console.warn('Aktif görev geri yükleme hatası:', e);
+    }
+  }
+
+  // Sayfa açıldığında hafızada bekleyen veya devam eden bir görev varsa geri bağla
+  checkSavedActiveJob();
 
 });
