@@ -104,40 +104,45 @@ document.addEventListener('DOMContentLoaded', () => {
     currentlyDisplayedTickerBook = null;
     seenTickerTitles.clear();
     if (liveBookTicker) liveBookTicker.classList.add('hidden');
-    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: --';
     if (liveTickerTitle) liveTickerTitle.textContent = '';
     if (liveTickerAuthor) liveTickerAuthor.textContent = '';
   }
 
   function enqueueTickerBook(book) {
     if (!book || !book.title) return;
+    // Çözülen kitabı değil çözülen ISBN'yi referans al:
+    // Henüz ISBN çözümü yapılmamış kitaplar ASLA tickera eklenmez!
+    const rawIsbn = book.isbn ? String(book.isbn).trim() : '';
+    if (!rawIsbn) return;
+
     const titleKey = book.title.trim().toLowerCase();
 
-    // Sırada bekleyen varsa ve yeni gelen veride ISBN çözüldüyse sıradakinin ISBN'ini güncelle
+    // Sırada bekleyen varsa ve "BULUNAMADI" iken yeni geçerli ISBN geldiyse güncelle
     const existing = tickerQueue.find(b => b.title.trim().toLowerCase() === titleKey);
     if (existing) {
-      if (book.isbn && (!existing.isbn || existing.isbn === 'Bulunamadı')) {
-        existing.isbn = book.isbn;
+      if (rawIsbn !== 'BULUNAMADI' && existing.isbn === 'BULUNAMADI') {
+        existing.isbn = rawIsbn;
       }
       return;
     }
 
-    // Şu an ekranda gösterilen kitapsa ve ISBN'i yeni çözüldüyse anında güncelle
+    // Şu an ekranda gösterilen kitapsa ve yeni geçerli ISBN geldiyse anında güncelle
     if (currentlyDisplayedTickerBook && currentlyDisplayedTickerBook.title.trim().toLowerCase() === titleKey) {
-      if (book.isbn && (!currentlyDisplayedTickerBook.isbn || currentlyDisplayedTickerBook.isbn === 'Bulunamadı')) {
-        currentlyDisplayedTickerBook.isbn = book.isbn;
+      if (rawIsbn !== 'BULUNAMADI' && currentlyDisplayedTickerBook.isbn === 'BULUNAMADI') {
+        currentlyDisplayedTickerBook.isbn = rawIsbn;
         renderTickerBook(currentlyDisplayedTickerBook);
       }
       return;
     }
 
-    // Daha önce işlenmediyse veya ISBN bilgisiyle geldiyse kuyruğa ekle
-    if (!seenTickerTitles.has(titleKey) || book.isbn) {
+    // Daha önce işlenmediyse kuyruğa ekle
+    if (!seenTickerTitles.has(titleKey)) {
       seenTickerTitles.add(titleKey);
       tickerQueue.push({
         title: book.title,
         author: book.author || '',
-        isbn: book.isbn || ''
+        isbn: rawIsbn
       });
 
       if (!tickerTimer) {
@@ -152,12 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (liveTickerAuthor) liveTickerAuthor.textContent = book.author ? `— ${book.author}` : '';
 
     if (liveTickerIsbn) {
-      if (book.isbn && String(book.isbn).trim() !== '' && book.isbn !== 'Bulunamadı') {
-        liveTickerIsbn.textContent = `ISBN: ${book.isbn}`;
-      } else if (book.isbn === 'Bulunamadı') {
-        liveTickerIsbn.textContent = 'ISBN: —';
+      const raw = book.isbn ? String(book.isbn).trim() : '';
+      if (raw && !raw.toUpperCase().includes('BULUNAMAD')) {
+        liveTickerIsbn.textContent = `ISBN: ${raw}`;
       } else {
-        liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+        liveTickerIsbn.textContent = 'ISBN: BULUNAMADI';
       }
       liveTickerIsbn.style.display = 'inline-block';
     }
@@ -768,16 +772,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 2. Canlı İşlenen Kitap Şeridini (Ayrı Terminal) Güncelle
-      // Çözülen veya işlenen kitapları teker teker okunabilir akışla gösterir
-      if (data.resolved_book) {
+      // YALNIZCA ISBN çözümlemesi tamamlanmış kitapları referans alır
+      if (data.resolved_book && data.resolved_book.isbn) {
         enqueueTickerBook(data.resolved_book);
       }
       if (Array.isArray(data.recent_books)) {
         for (const rb of data.recent_books) {
-          enqueueTickerBook(rb);
+          if (rb && rb.isbn) enqueueTickerBook(rb);
         }
       }
-      if (lastBook) {
+      if (lastBook && lastBook.isbn) {
         enqueueTickerBook(lastBook);
       }
       return;

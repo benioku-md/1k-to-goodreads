@@ -565,6 +565,9 @@ async def scrape_user_books(job: JobState):
 
                 if found_isbn:
                     book["isbn"] = found_isbn
+                    isbn_val = found_isbn
+                else:
+                    isbn_val = "BULUNAMADI"
 
                 resolved_count += 1
                 isbn_queue.task_done()
@@ -582,7 +585,6 @@ async def scrape_user_books(job: JobState):
                 job.message = f"ISBN numaraları tamamlanıyor: {resolved_count} / {target_total} (%{pct_isbn})..."
                 if raw_title:
                     existing_cover = job.last_book.get("cover") if job.last_book else ""
-                    isbn_val = book.get("isbn") or ""
                     rating_val = book.get("rating") or ""
                     job.last_book = {
                         "title": raw_title,
@@ -597,7 +599,7 @@ async def scrape_user_books(job: JobState):
                         "isbn": isbn_val,
                         "rating": rating_val
                     }
-                    job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != raw_title][:2]
+                    job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != raw_title][:4]
 
                 rem_target = max(0, target_total - resolved_count)
                 eta_sec = max(1, math.ceil(rem_target / 9) + 1)
@@ -786,14 +788,6 @@ async def scrape_user_books(job: JobState):
                             "isbn": isbn_val,
                             "rating": rating_val
                         }
-                        recent_entry = {
-                            "title": title,
-                            "author": author,
-                            "isbn": isbn_val,
-                            "rating": rating_val
-                        }
-                        job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != title][:2]
-
                         # Eşzamanlı boru hattı: Kitabı bekletmeden anında Kitapyurdu işçi havuzuna fırlat
                         await isbn_queue.put(book_entry)
 
