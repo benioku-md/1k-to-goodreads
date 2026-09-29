@@ -553,9 +553,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    // İlk sorguyu 250ms sonra hemen yap, ardından 750ms aralıklarla sürdür
+    // İlk sorguyu 250ms sonra hemen yap, ardından 1500ms (1.5 sn) aralıklarla sürdür
     setTimeout(poll, 250);
-    activePollingInterval = setInterval(poll, 750);
+    activePollingInterval = setInterval(poll, 1500);
   }
 
   // ============================================================================
@@ -680,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Yalnızca kullanıcı o sayfada aktif değilse (arka plandaysa) retro bildirim sesi çal ve sekme başlığını güncelle
       if (document.hidden) {
         playRetroCompletionChime();
-        document.title = '✓ (TAMAMLANDI) 1000Kitap ➔ Goodreads';
+        document.title = '(Tamamlandı) 1000Kitap ➔ Goodreads';
       }
 
       const total = data.total || data.total_count || data.current || data.current_count || 0;

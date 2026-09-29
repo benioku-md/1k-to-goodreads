@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+  <!-- Pixel Fincan Buharı -->
+  <rect x="24" y="6" width="3" height="3" fill="#C85A32"></rect>
+  <rect x="29" y="4" width="3" height="3" fill="#D96B43"></rect>
+  <rect x="34" y="7" width="3" height="3" fill="#C85A32"></rect>
+  
+  <!-- Fincan Gövdesi -->
+  <rect x="18" y="14" width="24" height="18" fill="#F7F4EB" stroke="#2D231E" stroke-width="2"></rect>
+  <rect x="22" y="16" width="16" height="5" fill="#4A7C59"></rect>
+  <rect x="42" y="18" width="6" height="10" fill="none" stroke="#2D231E" stroke-width="2"></rect>
+  <rect x="16" y="32" width="28" height="3" fill="#2D231E"></rect>
+
+  <!-- Pixel Kitaplar Yığını -->
+  <rect x="8" y="46" width="48" height="10" fill="#C85A32" stroke="#2D231E" stroke-width="2"></rect>
+  <rect x="12" y="49" width="36" height="4" fill="#F7F4EB"></rect>
+  <rect x="10" y="48" width="3" height="6" fill="#2D231E"></rect>
+  
+  <rect x="12" y="36" width="40" height="9" fill="#4A7C59" stroke="#2D231E" stroke-width="2"></rect>
+  <rect x="16" y="39" width="30" height="3" fill="#F7F4EB"></rect>
+  <rect x="14" y="38" width="3" height="5" fill="#2D231E"></rect>
+  
+  <!-- Kitap Ayracı -->
+  <polygon points="34,36 38,36 38,44 36,42 34,44" fill="#C85A32"></polygon>
+</svg>
