@@ -76,11 +76,15 @@ class JobState:
         self.event_queues: List[asyncio.Queue] = []
 
     def to_dict(self):
+        running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != self.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+        idx = ACTIVE_QUEUE_LIST.index(self.job_id) if self.job_id in ACTIVE_QUEUE_LIST else 0
+        people_ahead = ((1 if running_active else 0) + idx) if self.status == "queued" else 0
         return {
             "job_id": self.job_id,
             "status": self.status,
             "message": self.message,
             "queue_position": self.queue_position,
+            "people_ahead": people_ahead,
             "current_count": self.current_count,
             "total_count": self.total_count,
             "percent": self.percent,
@@ -105,6 +109,7 @@ class JobState:
 JOBS: Dict[str, JobState] = {}
 JOB_QUEUE: asyncio.Queue = asyncio.Queue()
 ACTIVE_QUEUE_LIST: List[str] = []
+CURRENT_RUNNING_JOB_ID: Optional[str] = None
 IP_REQUEST_TIMESTAMPS: Dict[str, List[float]] = {}
 RATE_LIMIT_WINDOW = 60.0  # 60 saniye
 MAX_REQUESTS_PER_WINDOW = 15  # IP başına dakikada maksimum 15 istek (flood kalkanı)
@@ -842,6 +847,7 @@ async def queue_worker():
             continue
 
         try:
+            CURRENT_RUNNING_JOB_ID = job_id
             # Sıradaki diğer bekleyen işlerin pozisyonlarını güncelle
             if job_id in ACTIVE_QUEUE_LIST:
                 ACTIVE_QUEUE_LIST.remove(job_id)
@@ -849,14 +855,15 @@ async def queue_worker():
             for idx, q_id in enumerate(ACTIVE_QUEUE_LIST):
                 waiting_job = JOBS.get(q_id)
                 if waiting_job and waiting_job.status == "queued":
-                    waiting_job.queue_position = idx + 1
-                    wait_count = waiting_job.queue_position - 1
-                    msg = f"Kuyruktasınız (Önünüzde {wait_count} kişi var)..." if wait_count > 0 else "Sıradaki işlem sizin, aktarım başlıyor..."
+                    people_ahead = 1 + idx  # 1 aktif taranan işlem + önündeki bekleyenler
+                    waiting_job.queue_position = people_ahead + 1
+                    msg = "Kuyruktasınız (Önünüzdeki kitaplık taranıyor)..." if people_ahead == 1 else f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
                     await waiting_job.broadcast({
                         "type": "queued",
                         "status": "queued",
                         "position": waiting_job.queue_position,
                         "queue_position": waiting_job.queue_position,
+                        "people_ahead": people_ahead,
                         "message": msg
                     })
 
@@ -882,6 +889,7 @@ async def queue_worker():
                 "error": str(e)
             })
         finally:
+            CURRENT_RUNNING_JOB_ID = None
             JOB_QUEUE.task_done()
 
 # Periyodik bellek temizleyici (15 dakikadan eski tamamlanmış işleri RAM'den siler)
@@ -994,15 +1002,27 @@ async def create_export_job(payload: ExportRequest, request: Request):
     job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
     JOBS[job_id] = job
 
+    running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+    people_ahead = (1 if running_active else 0) + len(ACTIVE_QUEUE_LIST)
+    total_position = people_ahead + 1
+
     ACTIVE_QUEUE_LIST.append(job_id)
-    job.queue_position = len(ACTIVE_QUEUE_LIST)
+    job.queue_position = total_position
+
+    if people_ahead == 0:
+        job.message = "İşleminiz hazırlanıyor, aktarım başlatılıyor..."
+    elif people_ahead == 1:
+        job.message = "Kuyruktasınız (Önünüzdeki kitaplık taranıyor)..."
+    else:
+        job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
 
     await JOB_QUEUE.put(job_id)
 
     return {
         "job_id": job_id,
         "queue_position": job.queue_position,
-        "message": f"Kuyruğa alındı. Sıranız: #{job.queue_position}"
+        "people_ahead": people_ahead,
+        "message": job.message
     }
 
 @app.get("/api/jobs/{job_id}/status")
@@ -1027,11 +1047,17 @@ async def stream_job_events(job_id: str, request: Request):
 
     async def event_generator():
         # İlk bağlantıda mevcut durumu hemen gönder
+        running_active = (CURRENT_RUNNING_JOB_ID is not None and CURRENT_RUNNING_JOB_ID != job.job_id and CURRENT_RUNNING_JOB_ID in JOBS and JOBS[CURRENT_RUNNING_JOB_ID].status in ("scraping", "resolving_isbn", "resolving_isbn_strict", "resolving_isbn_loose", "resolving_isbn_ky"))
+        idx = ACTIVE_QUEUE_LIST.index(job.job_id) if job.job_id in ACTIVE_QUEUE_LIST else 0
+        people_ahead = ((1 if running_active else 0) + idx) if job.status == "queued" else 0
+
         initial_payload = {
-            "type": "status",
+            "type": "queued" if job.status == "queued" else "status",
             "status": job.status,
             "message": job.message,
             "position": job.queue_position,
+            "queue_position": job.queue_position,
+            "people_ahead": people_ahead,
             "current": job.current_count,
             "total": job.total_count,
             "percent": job.percent,

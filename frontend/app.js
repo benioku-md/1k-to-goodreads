@@ -341,13 +341,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================================
   function initProgressView(jobData) {
     const pos = jobData.queue_position !== undefined ? jobData.queue_position : (jobData.position !== undefined ? jobData.position : 1);
-    statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-    statusBadge.style.borderColor = 'var(--ink-espresso)';
-    const waitCount = pos - 1;
-    if (waitCount > 0) {
-      queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
+    const peopleAhead = jobData.people_ahead !== undefined ? jobData.people_ahead : (pos > 1 ? pos - 1 : 0);
+
+    if (peopleAhead > 0) {
+      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+      if (peopleAhead === 1) {
+        queueInfoText.textContent = 'Kuyruktasınız (Önünüzdeki kitaplık taranıyor)...';
+      } else {
+        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
+      }
     } else {
-      queueInfoText.textContent = 'Sıranız: #1 (Sıradaki işlem sizin, aktarım başlatılıyor...)';
+      statusBadgeText.textContent = 'BAŞLATILIYOR';
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+      queueInfoText.textContent = jobData.message || 'İşleminiz hazırlanıyor, aktarım başlatılıyor...';
     }
 
     progressBar.style.width = '3%';
@@ -358,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     liveBookCard.classList.add('hidden');
     liveBookCover.classList.add('hidden');
     liveBookCover.src = '';
+    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
   }
 
   // ============================================================================
@@ -423,13 +431,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. KUYRUKTA BEKLEME DURUMU
     if (data.status === 'queued') {
       const pos = data.position !== undefined ? data.position : (data.queue_position !== undefined ? data.queue_position : 1);
-      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
-      const waitCount = pos - 1;
-      if (waitCount > 0) {
-        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${waitCount} kişi var)...`;
+      const peopleAhead = data.people_ahead !== undefined ? data.people_ahead : (pos > 1 ? pos - 1 : 0);
+
+      if (peopleAhead > 0) {
+        statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+        statusBadge.style.borderColor = 'var(--ink-espresso)';
+        if (peopleAhead === 1) {
+          queueInfoText.textContent = 'Kuyruktasınız (Önünüzdeki kitaplık taranıyor)...';
+        } else {
+          queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
+        }
       } else {
-        queueInfoText.textContent = 'Sıranız: #1 (Sıradaki işlem sizin, aktarım başlatılıyor...)';
+        statusBadgeText.textContent = 'BAŞLATILIYOR';
+        statusBadge.style.borderColor = 'var(--ink-espresso)';
+        queueInfoText.textContent = data.message || 'İşleminiz hazırlanıyor, aktarım başlatılıyor...';
       }
       return;
     }
