@@ -161,32 +161,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // SIRADAN ÇIK / İPTAL ET BUTONU
+  // ANINDA GÖREV İPTALİ (BUTON, SAYFA YENİLEME F5 / CTRL+R VEYA SEKMEYİ KAPATMA)
   // ============================================================================
+  function cancelCurrentJobImmediately() {
+    if (!currentJobId) return;
+    const jid = currentJobId;
+    currentJobId = null;
+    const cancelUrl = `${API_BASE_URL}/api/jobs/${jid}/cancel`;
+
+    clearActiveJobFromStorage();
+    cleanupActiveStreams();
+
+    try {
+      fetch(cancelUrl, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': '1k-to-goodreads'
+        },
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) {}
+
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(cancelUrl);
+      }
+    } catch (e) {}
+  }
+
   if (cancelJobBtn) {
-    cancelJobBtn.addEventListener('click', async () => {
-      if (!currentJobId) {
-        clearActiveJobFromStorage();
-        cleanupActiveStreams();
-        showSection(formSection);
-        return;
-      }
-      try {
-        await fetch(`${API_BASE_URL}/api/jobs/${currentJobId}/cancel`, {
-          method: 'POST',
-          headers: {
-            'X-Requested-With': '1k-to-goodreads'
-          }
-        });
-      } catch (e) {
-        console.warn('İptal isteği hatası:', e);
-      }
-      clearActiveJobFromStorage();
-      cleanupActiveStreams();
-      currentJobId = null;
+    cancelJobBtn.addEventListener('click', () => {
+      cancelCurrentJobImmediately();
       showSection(formSection);
     });
   }
+
+  window.addEventListener('beforeunload', () => {
+    cancelCurrentJobImmediately();
+  });
+
+  window.addEventListener('pagehide', () => {
+    cancelCurrentJobImmediately();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const isF5 = e.key === 'F5' || e.code === 'F5';
+    const isRefresh = (e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR');
+    if (isF5 || isRefresh) {
+      cancelCurrentJobImmediately();
+    }
+  });
 
   // ============================================================================
   // TAHMİNİ SÜRE (ETA) FORMATLAYICI VE GERÇEK ZAMANLI SAYAÇ

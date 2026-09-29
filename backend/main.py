@@ -1257,22 +1257,6 @@ async def create_export_job(payload: ExportRequest, request: Request):
     timestamps.append(now)
     IP_REQUEST_TIMESTAMPS[client_ip] = timestamps
 
-    # 3. Mükerrer Kuyruk Koruması (Mahremiyet korumalı genel mesaj)
-    for q_id in list(ACTIVE_QUEUE_LIST):
-        existing_job = JOBS.get(q_id)
-        if existing_job and existing_job.username == username:
-            raise HTTPException(
-                status_code=409,
-                detail="Bu kullanıcı hesabı için zaten sırada bekleyen bir işlem var. Lütfen sıranın tamamlanmasını bekleyin."
-            )
-
-    for jid, j in list(JOBS.items()):
-        if j.username == username and is_job_running_active(jid):
-            raise HTTPException(
-                status_code=409,
-                detail="Bu kullanıcı hesabı şu anda taranıyor. Lütfen mevcut işlemin tamamlanmasını bekleyin."
-            )
-
     job_id = uuid.uuid4().hex
     job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
     JOBS[job_id] = job
@@ -1305,7 +1289,10 @@ async def cancel_job(job_id: str):
     global CURRENT_RUNNING_JOB_ID
     job = JOBS.get(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="İşlem bulunamadı veya süresi doldu.")
+        return {"status": "ok", "message": "İşlem zaten mevcut değil veya iptal edilmiş."}
+
+    if job.status == "completed":
+        return {"status": "ok", "message": "İşlem zaten tamamlanmış."}
 
     job.status = "cancelled"
     job.cancelled = True
