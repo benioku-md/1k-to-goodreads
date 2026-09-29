@@ -947,7 +947,8 @@ async def queue_worker():
                 "message": job.message,
                 "current": job.current_count,
                 "total": job.total_count,
-                "percent": job.percent
+                "percent": job.percent,
+                "estimated_seconds": job.estimated_seconds or 15
             })
 
             await scrape_user_books(job)
@@ -1086,18 +1087,19 @@ async def create_export_job(payload: ExportRequest, request: Request):
     job.queue_position = total_position
 
     if people_ahead == 0:
-        job.message = "İşleminiz hazırlanıyor, aktarım başlatılıyor..."
+        job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
+        job.estimated_seconds = 4
     else:
         job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
+        job.estimated_seconds = people_ahead * 25
 
     await JOB_QUEUE.put(job_id)
 
-    job_dict = job.to_dict()
     return {
         "job_id": job_id,
         "queue_position": job.queue_position,
         "people_ahead": people_ahead,
-        "estimated_seconds": job_dict.get("estimated_seconds"),
+        "estimated_seconds": job.estimated_seconds,
         "message": job.message
     }
 
@@ -1127,7 +1129,7 @@ async def cancel_job(job_id: str):
             people_ahead = (1 if running_active else 0) + idx
             waiting_job.queue_position = people_ahead + 1
             if people_ahead == 0:
-                waiting_job.message = "İşleminiz hazırlanıyor, aktarım başlatılıyor..."
+                waiting_job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
             else:
                 waiting_job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
 

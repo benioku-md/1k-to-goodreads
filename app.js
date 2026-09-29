@@ -130,26 +130,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // BAĞLANTIYI KOPYALA BUTONU
   // ============================================================================
   if (copyLinkBtn) {
-    copyLinkBtn.addEventListener('click', async () => {
+    copyLinkBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
       const urlToCopy = window.location.href;
-      try {
-        await navigator.clipboard.writeText(urlToCopy);
-        if (copyTooltip) {
-          copyTooltip.classList.remove('hidden');
-          setTimeout(() => copyTooltip.classList.add('hidden'), 2000);
-        }
-      } catch (err) {
-        // Fallback
-        const tempInput = document.createElement('input');
-        tempInput.value = urlToCopy;
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempInput);
-        if (copyTooltip) {
-          copyTooltip.classList.remove('hidden');
-          setTimeout(() => copyTooltip.classList.add('hidden'), 2000);
-        }
+      let ok = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(urlToCopy);
+          ok = true;
+        } catch (err) {}
+      }
+      if (!ok) {
+        try {
+          const tempInput = document.createElement('input');
+          tempInput.value = urlToCopy;
+          document.body.appendChild(tempInput);
+          tempInput.select();
+          document.execCommand('copy');
+          document.body.removeChild(tempInput);
+          ok = true;
+        } catch (err) {}
+      }
+      if (copyTooltip) {
+        copyTooltip.classList.remove('hidden');
+        setTimeout(() => copyTooltip.classList.add('hidden'), 2000);
       }
     });
   }
@@ -178,8 +182,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ============================================================================
-  // TAHMİNİ SÜRE (ETA) FORMATLAYICI
+  // TAHMİNİ SÜRE (ETA) FORMATLAYICI VE GERÇEK ZAMANLI SAYAÇ
   // ============================================================================
+  let etaCountdownTimer = null;
+  let currentEtaSeconds = 0;
+
   function formatEta(seconds) {
     if (!seconds || seconds <= 0) return null;
     if (seconds < 60) return `~${seconds} sn`;
@@ -190,15 +197,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateEtaDisplay(estimatedSeconds, status) {
     if (!queueEtaBox || !queueEtaText) return;
-    if (estimatedSeconds && (status === 'queued' || status === 'scraping' || (status && status.startsWith('resolving_isbn')))) {
-      const formatted = formatEta(estimatedSeconds);
-      if (formatted) {
-        queueEtaText.textContent = `Kalan Süre: ${formatted}`;
-        queueEtaBox.classList.remove('hidden');
-        return;
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      if (etaCountdownTimer) {
+        clearInterval(etaCountdownTimer);
+        etaCountdownTimer = null;
       }
+      queueEtaBox.classList.add('hidden');
+      return;
     }
-    queueEtaBox.classList.add('hidden');
+
+    if (estimatedSeconds && estimatedSeconds > 0) {
+      currentEtaSeconds = estimatedSeconds;
+    } else if (!currentEtaSeconds || currentEtaSeconds <= 0) {
+      currentEtaSeconds = status === 'queued' ? 4 : 12;
+    }
+
+    const formatted = formatEta(currentEtaSeconds);
+    if (formatted) {
+      queueEtaText.textContent = `Kalan Süre: ${formatted}`;
+      queueEtaBox.classList.remove('hidden');
+    }
+
+    if (!etaCountdownTimer) {
+      etaCountdownTimer = setInterval(() => {
+        if (currentEtaSeconds > 1) {
+          currentEtaSeconds--;
+          const f = formatEta(currentEtaSeconds);
+          if (f && queueEtaText) {
+            queueEtaText.textContent = `Kalan Süre: ${f}`;
+          }
+        }
+      }, 1000);
+    }
   }
 
   // ============================================================================
@@ -333,6 +363,14 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(activePollingInterval);
       activePollingInterval = null;
     }
+    if (etaCountdownTimer) {
+      clearInterval(etaCountdownTimer);
+      etaCountdownTimer = null;
+    }
+    currentEtaSeconds = 0;
+    if (queueEtaBox) {
+      queueEtaBox.classList.add('hidden');
+    }
   }
 
   // State for silent auto-retry
@@ -433,17 +471,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const pos = jobData.queue_position !== undefined ? jobData.queue_position : (jobData.position !== undefined ? jobData.position : 1);
     const peopleAhead = jobData.people_ahead !== undefined ? jobData.people_ahead : (pos > 1 ? pos - 1 : 0);
 
+    statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+    statusBadge.style.borderColor = 'var(--ink-espresso)';
+
     if (peopleAhead > 0) {
-      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
       queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
     } else {
-      statusBadgeText.textContent = 'BAŞLATILIYOR';
-      statusBadge.style.borderColor = 'var(--ink-espresso)';
-      queueInfoText.textContent = jobData.message || 'İşleminiz hazırlanıyor, aktarım başlatılıyor...';
+      queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
     }
 
-    updateEtaDisplay(jobData.estimated_seconds, peopleAhead > 0 ? 'queued' : 'scraping');
+    let etaSec = jobData.estimated_seconds;
+    if (!etaSec || etaSec <= 0) {
+      etaSec = peopleAhead > 0 ? (peopleAhead * 25) : 4;
+    }
+    updateEtaDisplay(etaSec, 'queued');
 
     progressBar.style.width = '3%';
     progressBar.setAttribute('aria-valuenow', '3');
@@ -531,16 +572,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const pos = data.position !== undefined ? data.position : (data.queue_position !== undefined ? data.queue_position : 1);
       const peopleAhead = data.people_ahead !== undefined ? data.people_ahead : (pos > 1 ? pos - 1 : 0);
 
+      statusBadgeText.textContent = `SIRANIZ: #${pos}`;
+      statusBadge.style.borderColor = 'var(--ink-espresso)';
+
       if (peopleAhead > 0) {
-        statusBadgeText.textContent = `SIRANIZ: #${pos}`;
-        statusBadge.style.borderColor = 'var(--ink-espresso)';
         queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
       } else {
-        statusBadgeText.textContent = 'BAŞLATILIYOR';
-        statusBadge.style.borderColor = 'var(--ink-espresso)';
-        queueInfoText.textContent = data.message || 'İşleminiz hazırlanıyor, aktarım başlatılıyor...';
+        queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
       }
-      updateEtaDisplay(data.estimated_seconds, 'queued');
+
+      let etaSec = data.estimated_seconds;
+      if (!etaSec || etaSec <= 0) {
+        etaSec = peopleAhead > 0 ? (peopleAhead * 25) : 4;
+      }
+      updateEtaDisplay(etaSec, 'queued');
       return;
     }
 
@@ -580,7 +625,17 @@ document.addEventListener('DOMContentLoaded', () => {
       progressBar.style.width = `${barWidth}%`;
       progressBar.setAttribute('aria-valuenow', String(percent));
 
-      updateEtaDisplay(data.estimated_seconds, data.status);
+      // Dinamik Kalan Süre (ETA): Backend gönderirse kullan, göndermezse kitap sayısından 9 kitap/sn ile hesapla
+      let etaSec = data.estimated_seconds;
+      if (!etaSec || etaSec <= 0) {
+        if (total > 0 && current >= 0) {
+          const rem = Math.max(0, total - current);
+          etaSec = Math.ceil(rem / 9) + 1;
+        } else {
+          etaSec = 15;
+        }
+      }
+      updateEtaDisplay(etaSec, data.status || 'scraping');
 
       // Canlı taranan kitap kartını güncelle
       const lastBook = data.last_book;
@@ -609,7 +664,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const total = data.total || data.total_count || data.current || data.current_count || 0;
       autoRetryCount = 0;
       finalCount.textContent = total;
-      previewBooks = data.preview_books || [];
+      if (data.preview_books && data.preview_books.length > 0) {
+        previewBooks = data.preview_books;
+      }
 
       let downloadUrl = data.download_url || `/api/jobs/${currentJobId}/download`;
       if (downloadUrl.startsWith('/')) {
@@ -723,8 +780,81 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/'/g, '&#39;');
   }
 
-  function renderPreviewBooks() {
+  function parseCsvLine(text) {
+    const result = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') {
+        if (inQuotes && text[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === ',' && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  async function renderPreviewBooks() {
     if (!previewModalBody) return;
+
+    if (!previewBooks || previewBooks.length === 0) {
+      const downloadUrl = (downloadBtn && downloadBtn.href && !downloadBtn.href.endsWith('#')) 
+        ? downloadBtn.href 
+        : (currentJobId ? `${API_BASE_URL}/api/jobs/${currentJobId}/download` : null);
+
+      if (downloadUrl) {
+        previewModalBody.innerHTML = '<div style="text-align:center; padding:24px; color:var(--ink-medium);"><i class="fa-solid fa-spinner fa-spin" style="margin-right:8px;"></i> Önizleme hazırlanıyor...</div>';
+        try {
+          const resp = await fetch(downloadUrl);
+          if (resp.ok) {
+            const csvText = await resp.text();
+            const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+            if (lines.length > 1) {
+              const headers = parseCsvLine(lines[0]);
+              const titleIdx = headers.indexOf('Title');
+              const authorIdx = headers.indexOf('Author');
+              const isbnIdx = headers.indexOf('ISBN');
+              const ratingIdx = headers.indexOf('My Rating');
+              const shelfIdx = headers.indexOf('Exclusive Shelf');
+
+              previewBooks = [];
+              for (let i = 1; i < lines.length && previewBooks.length < 5; i++) {
+                const cols = parseCsvLine(lines[i]);
+                if (cols.length < 2) continue;
+                const title = titleIdx !== -1 ? cols[titleIdx] : cols[0];
+                const author = authorIdx !== -1 ? cols[authorIdx] : cols[1];
+                let isbn = isbnIdx !== -1 ? cols[isbnIdx] : '';
+                isbn = isbn.replace(/^[="]+|["]+$/g, '');
+                const rating = ratingIdx !== -1 ? parseInt(cols[ratingIdx], 10) || 0 : 0;
+                const rawShelf = shelfIdx !== -1 ? cols[shelfIdx] : 'read';
+                const shelf = rawShelf === 'read' ? 'Okundu' : (rawShelf === 'to-read' ? 'Okunacak' : 'Şu An Okunuyor');
+
+                previewBooks.push({
+                  title: title || 'Bilinmeyen Kitap',
+                  author: author || 'Bilinmeyen Yazar',
+                  isbn: isbn,
+                  rating: rating,
+                  shelf: shelf
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Önizleme CSV yükleme hatası:', err);
+        }
+      }
+    }
+
     if (!previewBooks || previewBooks.length === 0) {
       previewModalBody.innerHTML = '<p style="text-align:center; padding:20px; color:var(--ink-light); font-style:italic;">Önizleme verisi bulunamadı.</p>';
       return;
@@ -753,9 +883,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (previewBtn) {
-    previewBtn.addEventListener('click', () => {
-      renderPreviewBooks();
+    previewBtn.addEventListener('click', async () => {
       if (previewModal) previewModal.classList.remove('hidden');
+      await renderPreviewBooks();
     });
   }
   if (closePreviewBtn) {

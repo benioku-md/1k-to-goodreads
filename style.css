@@ -141,37 +141,35 @@ body {
 .status-left, .status-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .status-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
   color: #DDD2C7;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  font-size: 0.85rem;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none;
+  font-size: 1.25rem; /* ~20px, 3-4px daha büyük ve net */
   cursor: pointer;
   text-decoration: none;
   position: relative;
-  transition: all 0.15s ease;
-  padding: 0;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s ease, transform 0.15s ease;
 }
 
 .status-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
   color: #FFF;
-  border-color: rgba(255, 255, 255, 0.35);
-  transform: translateY(-1px);
+  transform: scale(1.18);
 }
 
 .copy-tooltip {
   position: absolute;
-  top: 130%;
+  top: 140%;
   left: 50%;
   transform: translateX(-50%);
   background: #2D231E;
@@ -182,8 +180,8 @@ body {
   padding: 2px 6px;
   white-space: nowrap;
   pointer-events: none;
-  z-index: 100;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .copy-tooltip.hidden {
@@ -1813,13 +1811,12 @@ body {
   }
 
   .status-left, .status-right {
-    gap: 6px;
+    gap: 8px;
   }
 
   .status-icon-btn {
-    width: 24px;
-    height: 24px;
-    font-size: 0.78rem;
+    font-size: 1.15rem;
+    padding: 0 3px;
   }
 
   .status-mode, .status-device-type {
@@ -1966,13 +1963,12 @@ body {
   }
 
   .status-left, .status-right {
-    gap: 4px;
+    gap: 6px;
   }
 
   .status-icon-btn {
-    width: 22px;
-    height: 22px;
-    font-size: 0.72rem;
+    font-size: 1.05rem;
+    padding: 0 2px;
   }
 
   .status-time {
