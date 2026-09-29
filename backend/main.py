@@ -79,26 +79,12 @@ class JobState:
         self.event_queues: List[asyncio.Queue] = []
 
     def to_dict(self):
-        running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, self.job_id)
-        idx = ACTIVE_QUEUE_LIST.index(self.job_id) if self.job_id in ACTIVE_QUEUE_LIST else 0
-        people_ahead = ((1 if running_active else 0) + idx) if self.status == "queued" else 0
-
-        estimated_seconds = None
         if self.status == "queued":
-            if people_ahead > 0:
-                if running_active:
-                    active_job = JOBS.get(CURRENT_RUNNING_JOB_ID)
-                    if active_job and active_job.total_count > 0:
-                        rem_active = max(0, active_job.total_count - active_job.current_count)
-                        active_sec = math.ceil(rem_active / 9) + 1
-                    else:
-                        active_sec = 25
-                    estimated_seconds = active_sec + (max(0, people_ahead - 1) * 25)
-                else:
-                    estimated_seconds = max(1, people_ahead * 25)
-            else:
-                estimated_seconds = 0
-        elif self.status not in ("completed", "failed", "cancelled", "queued"):
+            pos, people_ahead, estimated_seconds = calculate_queue_eta(self.job_id)
+            self.queue_position = pos
+            self.estimated_seconds = estimated_seconds
+        else:
+            people_ahead = 0
             rem = max(0, self.total_count - self.current_count) if self.total_count > 0 else 50
             estimated_seconds = max(1, math.ceil(rem / 9) + 1)
 
@@ -109,13 +95,13 @@ class JobState:
             "queue_position": self.queue_position,
             "people_ahead": people_ahead,
             "estimated_seconds": estimated_seconds,
-            "current_count": self.current_count,
-            "total_count": self.total_count,
-            "percent": self.percent,
-            "last_book": self.last_book,
-            "resolved_book": self.recent_books[0] if self.recent_books else None,
-            "recent_books": self.recent_books,
-            "preview_books": self.preview_books,
+            "current_count": self.current_count if self.status != "queued" else 0,
+            "total_count": self.total_count if self.status != "queued" else 0,
+            "percent": self.percent if self.status != "queued" else 0,
+            "last_book": self.last_book if self.status != "queued" else None,
+            "resolved_book": (self.recent_books[0] if self.recent_books else None) if self.status != "queued" else None,
+            "recent_books": self.recent_books if self.status != "queued" else [],
+            "preview_books": self.preview_books if self.status != "queued" else [],
             "error_message": self.error_message
         }
 
@@ -149,6 +135,83 @@ def is_job_running_active(job_id_to_check: Optional[str], exclude_job_id: Option
     if not job or job.cancelled:
         return False
     return job.status not in ("completed", "failed", "cancelled")
+
+
+def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
+    """
+    Kuyruktaki belirli bir iş için (position, people_ahead, estimated_seconds) hesaplar.
+    - 1. aktif çalışan işin canlı kalan süresini alır: (total - current) / 9 sn
+    - Önündeki her bekleyen kullanıcı için hesaplanan tahmini süreyi zincirleme ekler.
+    """
+    running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, job_id)
+    active_remaining_sec = 0
+    if running_active and CURRENT_RUNNING_JOB_ID:
+        active_job = JOBS.get(CURRENT_RUNNING_JOB_ID)
+        if active_job:
+            if active_job.total_count > 0:
+                rem = max(0, active_job.total_count - active_job.current_count)
+                active_remaining_sec = max(2, math.ceil(rem / 9) + 1)
+            else:
+                active_remaining_sec = 25
+
+    if job_id not in ACTIVE_QUEUE_LIST:
+        people_ahead = 1 if running_active else 0
+        return people_ahead + 1, people_ahead, max(2, active_remaining_sec) if people_ahead > 0 else 2
+
+    idx = ACTIVE_QUEUE_LIST.index(job_id)
+    people_ahead = (1 if running_active else 0) + idx
+    pos = people_ahead + 1
+
+    # Zincirleme bekleme süresi: Aktif işin kalan süresi + sıradaki öncüllerin süreleri
+    accumulated_sec = active_remaining_sec
+    for i in range(idx):
+        ahead_id = ACTIVE_QUEUE_LIST[i]
+        ahead_job = JOBS.get(ahead_id)
+        if ahead_job and ahead_job.total_count > 0:
+            est_ahead = max(5, math.ceil(ahead_job.total_count / 9) + 3)
+        else:
+            est_ahead = 22
+        accumulated_sec += est_ahead
+
+    total_wait_sec = max(2, accumulated_sec) if people_ahead > 0 else 2
+    return pos, people_ahead, total_wait_sec
+
+
+async def sync_queue_eta_broadcast():
+    """
+    Kuyrukta bekleyen tüm kullanıcılara canlı kalan süreyi ve sırayı anlık iletir.
+    ÖNEMLİ (MAHREMİYET KORUMASI): Asla hiçbir kullanıcı verisi (kitap adı, yazar, kapak vb.)
+    sızdırılmaz; yalnızca sıra numarası, önündeki kişi sayısı ve saniye cinsinden süre yayınlanır.
+    """
+    if not ACTIVE_QUEUE_LIST:
+        return
+
+    for q_id in list(ACTIVE_QUEUE_LIST):
+        waiting_job = JOBS.get(q_id)
+        if not waiting_job or waiting_job.status != "queued":
+            continue
+
+        pos, people_ahead, est_sec = calculate_queue_eta(q_id)
+        waiting_job.queue_position = pos
+        waiting_job.estimated_seconds = est_sec
+
+        if pos > 1 or people_ahead > 0:
+            count = people_ahead if people_ahead > 0 else (pos - 1)
+            msg = f"Kuyruktasınız (Önünüzde {count} kişi var)..."
+        else:
+            msg = "Sıranız: #1 (Aktarım başlatılıyor)..."
+        waiting_job.message = msg
+
+        # SADECE SIRA VE SÜRE VERİSİ - KULLANICI BİLGİSİ İÇERMEZ
+        await waiting_job.broadcast({
+            "type": "queued",
+            "status": "queued",
+            "position": pos,
+            "queue_position": pos,
+            "people_ahead": people_ahead,
+            "estimated_seconds": est_sec,
+            "message": msg
+        })
 
 def validate_username(username: str) -> Tuple[bool, str]:
     """1000Kitap kullanıcı adı kurallarını doğrular."""
@@ -616,6 +679,8 @@ async def scrape_user_books(job: JobState):
                     "recent_books": job.recent_books,
                     "resolved_book": recent_entry if raw_title else None
                 })
+                if ACTIVE_QUEUE_LIST:
+                    asyncio.create_task(sync_queue_eta_broadcast())
 
         shelves_to_process = []
         if job.shelf == "okuyacaklari":
@@ -895,6 +960,8 @@ async def scrape_user_books(job: JobState):
                         "last_book": job.last_book,
                         "recent_books": job.recent_books
                     })
+                    if ACTIVE_QUEUE_LIST:
+                        asyncio.create_task(sync_queue_eta_broadcast())
 
                     has_more = bool(sonuc.get("hasMore", False))
                     kume = str(sonuc.get("kume", ""))
@@ -933,6 +1000,8 @@ async def scrape_user_books(job: JobState):
                 "percent": job.percent,
                 "estimated_seconds": 2
             })
+            if ACTIVE_QUEUE_LIST:
+                asyncio.create_task(sync_queue_eta_broadcast())
             try:
                 reviews_by_id, reviews_by_title = await review_task
                 for b in collected_books:
@@ -1044,29 +1113,7 @@ async def queue_worker():
             # Sıradaki diğer bekleyen işlerin pozisyonlarını güncelle
             if job_id in ACTIVE_QUEUE_LIST:
                 ACTIVE_QUEUE_LIST.remove(job_id)
-
-            for idx, q_id in enumerate(ACTIVE_QUEUE_LIST):
-                waiting_job = JOBS.get(q_id)
-                if waiting_job and waiting_job.status == "queued":
-                    people_ahead = 1 + idx  # 1 aktif taranan işlem + önündeki bekleyenler
-                    waiting_job.queue_position = people_ahead + 1
-                    msg = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
-                    waiting_job.message = msg
-
-                    active_job = JOBS.get(job_id)
-                    rem_act = max(0, active_job.total_count - active_job.current_count) if (active_job and active_job.total_count > 0) else 180
-                    act_sec = math.ceil(rem_act / 9) + 1
-                    est_sec = act_sec + (idx * 21)
-
-                    await waiting_job.broadcast({
-                        "type": "queued",
-                        "status": "queued",
-                        "position": waiting_job.queue_position,
-                        "queue_position": waiting_job.queue_position,
-                        "people_ahead": people_ahead,
-                        "estimated_seconds": est_sec,
-                        "message": msg
-                    })
+            asyncio.create_task(sync_queue_eta_broadcast())
 
             job.status = "scraping"
             job.message = "Kitaplık taranmaya başlandı..."
@@ -1097,6 +1144,7 @@ async def queue_worker():
         finally:
             CURRENT_RUNNING_JOB_ID = None
             JOB_QUEUE.task_done()
+            asyncio.create_task(sync_queue_eta_broadcast())
 
 # Periyodik bellek temizleyici (15 dakikadan eski tamamlanmış işleri RAM'den siler)
 async def cleanup_worker():
@@ -1229,27 +1277,19 @@ async def create_export_job(payload: ExportRequest, request: Request):
     job = JobState(job_id=job_id, username=username, shelf=payload.shelf or "hepsi", include_reviews=bool(payload.include_reviews))
     JOBS[job_id] = job
 
-    running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID)
-    people_ahead = (1 if running_active else 0) + len(ACTIVE_QUEUE_LIST)
-    total_position = people_ahead + 1
-
     ACTIVE_QUEUE_LIST.append(job_id)
-    job.queue_position = total_position
+    pos, people_ahead, est_sec = calculate_queue_eta(job_id)
+    job.queue_position = pos
+    job.estimated_seconds = est_sec
 
-    if people_ahead == 0:
-        job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
-        job.estimated_seconds = 3
+    if pos > 1 or people_ahead > 0:
+        count = people_ahead if people_ahead > 0 else (pos - 1)
+        job.message = f"Kuyruktasınız (Önünüzde {count} kişi var)..."
     else:
-        job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
-        if running_active:
-            act = JOBS.get(CURRENT_RUNNING_JOB_ID)
-            rem_act = max(10, act.total_count - act.current_count) if (act and act.total_count > 0) else 180
-            act_sec = math.ceil(rem_act / 9) + 1
-        else:
-            act_sec = 0
-        job.estimated_seconds = act_sec + (max(0, people_ahead - 1) * 22)
+        job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
 
     await JOB_QUEUE.put(job_id)
+    asyncio.create_task(sync_queue_eta_broadcast())
 
     return {
         "job_id": job_id,
@@ -1277,36 +1317,7 @@ async def cancel_job(job_id: str):
     if CURRENT_RUNNING_JOB_ID == job_id:
         CURRENT_RUNNING_JOB_ID = None
 
-    # Arkadaki kuyruktaki işlerin sıralarını ve sürelerini güncelle
-    running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID)
-    for idx, q_id in enumerate(ACTIVE_QUEUE_LIST):
-        waiting_job = JOBS.get(q_id)
-        if waiting_job and waiting_job.status == "queued":
-            people_ahead = (1 if running_active else 0) + idx
-            waiting_job.queue_position = people_ahead + 1
-            if people_ahead == 0:
-                waiting_job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
-            else:
-                waiting_job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
-
-            # Dinamik ETA
-            if running_active:
-                act = JOBS.get(CURRENT_RUNNING_JOB_ID)
-                rem_act = max(0, act.total_count - act.current_count) if (act and act.total_count > 0) else 180
-                act_sec = math.ceil(rem_act / 9) + 1
-            else:
-                act_sec = 0
-            waiting_job.estimated_seconds = act_sec + (idx * 21)
-
-            await waiting_job.broadcast({
-                "type": "queued",
-                "status": "queued",
-                "position": waiting_job.queue_position,
-                "queue_position": waiting_job.queue_position,
-                "people_ahead": people_ahead,
-                "estimated_seconds": waiting_job.estimated_seconds,
-                "message": waiting_job.message
-            })
+    asyncio.create_task(sync_queue_eta_broadcast())
 
     await job.broadcast({
         "type": "cancelled",
@@ -1338,16 +1349,18 @@ async def stream_job_events(job_id: str, request: Request):
 
     async def event_generator():
         # İlk bağlantıda mevcut durumu hemen gönder
-        running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, job.job_id)
-        idx = ACTIVE_QUEUE_LIST.index(job.job_id) if job.job_id in ACTIVE_QUEUE_LIST else 0
-        people_ahead = ((1 if running_active else 0) + idx) if job.status == "queued" else 0
-        job_info = job.to_dict()
-
         if job.status == "queued":
-            current_pos = people_ahead + 1
-            msg = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..." if people_ahead > 0 else "Sıranız: #1 (Aktarım başlatılıyor)..."
+            pos, people_ahead, est_sec = calculate_queue_eta(job.job_id)
+            if pos > 1 or people_ahead > 0:
+                count = people_ahead if people_ahead > 0 else (pos - 1)
+                msg = f"Kuyruktasınız (Önünüzde {count} kişi var)..."
+            else:
+                msg = "Sıranız: #1 (Aktarım başlatılıyor)..."
+            current_pos = pos
         else:
             current_pos = job.queue_position
+            people_ahead = 0
+            est_sec = job.estimated_seconds
             msg = job.message
 
         initial_payload = {
@@ -1357,13 +1370,13 @@ async def stream_job_events(job_id: str, request: Request):
             "position": current_pos,
             "queue_position": current_pos,
             "people_ahead": people_ahead,
-            "estimated_seconds": job_info.get("estimated_seconds"),
-            "current": job.current_count,
-            "total": job.total_count,
-            "percent": job.percent,
-            "last_book": job.last_book,
-            "recent_books": job.recent_books,
-            "preview_books": job.preview_books,
+            "estimated_seconds": est_sec,
+            "current": job.current_count if job.status != "queued" else 0,
+            "total": job.total_count if job.status != "queued" else 0,
+            "percent": job.percent if job.status != "queued" else 0,
+            "last_book": job.last_book if job.status != "queued" else None,
+            "recent_books": job.recent_books if job.status != "queued" else [],
+            "preview_books": job.preview_books if job.status != "queued" else [],
             "error": job.error_message
         }
         yield f"data: {json.dumps(initial_payload)}\n\n"

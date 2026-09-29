@@ -217,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     isQueueTimer = isQueue;
-    if (estimatedSeconds && estimatedSeconds > 0) {
+    if (estimatedSeconds !== undefined && estimatedSeconds !== null && estimatedSeconds > 0) {
       currentEtaSeconds = estimatedSeconds;
     } else if (!currentEtaSeconds || currentEtaSeconds <= 0) {
       currentEtaSeconds = isQueue ? 25 : 12;
@@ -485,13 +485,14 @@ document.addEventListener('DOMContentLoaded', () => {
     statusBadgeText.textContent = `SIRANIZ: #${pos}`;
     statusBadge.style.borderColor = 'var(--ink-espresso)';
 
-    if (peopleAhead > 0) {
-      queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-      const waitSec = jobData.estimated_seconds || (peopleAhead * 22);
+    if (pos > 1 || peopleAhead > 0) {
+      const count = peopleAhead > 0 ? peopleAhead : (pos - 1);
+      queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${count} kişi var)...`;
+      const waitSec = jobData.estimated_seconds || (count * 25);
       updateEtaDisplay(waitSec, 'queued', true);
     } else {
-      queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
-      const waitSec = jobData.estimated_seconds || 3;
+      queueInfoText.textContent = `Sıranız: #1 (Aktarım başlatılıyor)...`;
+      const waitSec = jobData.estimated_seconds || 2;
       updateEtaDisplay(waitSec, 'queued', true);
     }
 
@@ -588,13 +589,14 @@ document.addEventListener('DOMContentLoaded', () => {
       statusBadgeText.textContent = `SIRANIZ: #${pos}`;
       statusBadge.style.borderColor = 'var(--ink-espresso)';
 
-      if (peopleAhead > 0) {
-        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
-        const waitSec = data.estimated_seconds || (peopleAhead * 22);
+      if (pos > 1 || peopleAhead > 0) {
+        const count = peopleAhead > 0 ? peopleAhead : (pos - 1);
+        queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${count} kişi var)...`;
+        const waitSec = data.estimated_seconds || (count * 25);
         updateEtaDisplay(waitSec, 'queued', true);
       } else {
-        queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
-        const waitSec = data.estimated_seconds || 3;
+        queueInfoText.textContent = `Sıranız: #1 (Aktarım başlatılıyor)...`;
+        const waitSec = data.estimated_seconds || 2;
         updateEtaDisplay(waitSec, 'queued', true);
       }
       return;
