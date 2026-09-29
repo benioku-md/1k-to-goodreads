@@ -83,106 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const bookCoverWrapper = document.getElementById('bookCoverWrapper');
   const bookPlaceholderIcon = document.getElementById('bookPlaceholderIcon');
 
-  // Canlı İşlenen Kitap Şeridi (Ayrı Terminal) Elemanları
-  const liveBookTicker = document.getElementById('liveBookTicker');
-  const liveTickerIsbn = document.getElementById('liveTickerIsbn');
-  const liveTickerTitle = document.getElementById('liveTickerTitle');
-  const liveTickerAuthor = document.getElementById('liveTickerAuthor');
-
-  // Ticker Sırası ve Teker Teker Akış Motoru
-  const tickerQueue = [];
-  let tickerTimer = null;
-  let currentlyDisplayedTickerBook = null;
-  const seenTickerTitles = new Set();
-
-  function resetTickerEngine() {
-    tickerQueue.length = 0;
-    if (tickerTimer) {
-      clearTimeout(tickerTimer);
-      tickerTimer = null;
-    }
-    currentlyDisplayedTickerBook = null;
-    seenTickerTitles.clear();
-    if (liveBookTicker) liveBookTicker.classList.add('hidden');
-    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: --';
-    if (liveTickerTitle) liveTickerTitle.textContent = '';
-    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
-  }
-
-  function enqueueTickerBook(book) {
-    if (!book || !book.title) return;
-    // Çözülen kitabı değil çözülen ISBN'yi referans al:
-    // Henüz ISBN çözümü yapılmamış kitaplar ASLA tickera eklenmez!
-    const rawIsbn = book.isbn ? String(book.isbn).trim() : '';
-    if (!rawIsbn) return;
-
-    const titleKey = book.title.trim().toLowerCase();
-
-    // Sırada bekleyen varsa ve "BULUNAMADI" iken yeni geçerli ISBN geldiyse güncelle
-    const existing = tickerQueue.find(b => b.title.trim().toLowerCase() === titleKey);
-    if (existing) {
-      if (rawIsbn !== 'BULUNAMADI' && existing.isbn === 'BULUNAMADI') {
-        existing.isbn = rawIsbn;
-      }
-      return;
-    }
-
-    // Şu an ekranda gösterilen kitapsa ve yeni geçerli ISBN geldiyse anında güncelle
-    if (currentlyDisplayedTickerBook && currentlyDisplayedTickerBook.title.trim().toLowerCase() === titleKey) {
-      if (rawIsbn !== 'BULUNAMADI' && currentlyDisplayedTickerBook.isbn === 'BULUNAMADI') {
-        currentlyDisplayedTickerBook.isbn = rawIsbn;
-        renderTickerBook(currentlyDisplayedTickerBook);
-      }
-      return;
-    }
-
-    // Daha önce işlenmediyse kuyruğa ekle
-    if (!seenTickerTitles.has(titleKey)) {
-      seenTickerTitles.add(titleKey);
-      tickerQueue.push({
-        title: book.title,
-        author: book.author || '',
-        isbn: rawIsbn
-      });
-
-      if (!tickerTimer) {
-        stepTickerQueue();
-      }
-    }
-  }
-
-  function renderTickerBook(book) {
-    if (!book) return;
-    if (liveTickerTitle) liveTickerTitle.textContent = book.title;
-    if (liveTickerAuthor) liveTickerAuthor.textContent = book.author ? `— ${book.author}` : '';
-
-    if (liveTickerIsbn) {
-      const raw = book.isbn ? String(book.isbn).trim() : '';
-      if (raw && !raw.toUpperCase().includes('BULUNAMAD')) {
-        liveTickerIsbn.textContent = `ISBN: ${raw}`;
-      } else {
-        liveTickerIsbn.textContent = 'ISBN: BULUNAMADI';
-      }
-      liveTickerIsbn.style.display = 'inline-block';
-    }
-
-    if (liveBookTicker) liveBookTicker.classList.remove('hidden');
-  }
-
-  function stepTickerQueue() {
-    if (tickerQueue.length === 0) {
-      tickerTimer = null;
-      return;
-    }
-
-    const nextBook = tickerQueue.shift();
-    currentlyDisplayedTickerBook = nextBook;
-    renderTickerBook(nextBook);
-
-    // Kullanıcının talimatı: "2 saniye önce mi çözüldü? tamam onu yansıt milisaniyelik olmak zorunda değil, teker teker alıp yansıtacak"
-    const delay = tickerQueue.length > 8 ? 850 : (tickerQueue.length > 3 ? 1200 : 1700);
-    tickerTimer = setTimeout(stepTickerQueue, delay);
-  }
 
   // Tamamlanma & İndirme Elemanları
   const finalCount = document.getElementById('finalCount');
@@ -478,7 +378,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (queueEtaBox) {
       queueEtaBox.classList.add('hidden');
     }
-    resetTickerEngine();
   }
 
   // State for silent auto-retry
@@ -602,7 +501,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
     if (liveBookTitle) liveBookTitle.textContent = '';
     if (liveBookAuthor) liveBookAuthor.textContent = '';
-    resetTickerEngine();
   }
 
   // ============================================================================
@@ -769,20 +667,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
         }
         if (liveBookCard) liveBookCard.classList.remove('hidden');
-      }
-
-      // 2. Canlı İşlenen Kitap Şeridini (Ayrı Terminal) Güncelle
-      // YALNIZCA ISBN çözümlemesi tamamlanmış kitapları referans alır
-      if (data.resolved_book && data.resolved_book.isbn) {
-        enqueueTickerBook(data.resolved_book);
-      }
-      if (Array.isArray(data.recent_books)) {
-        for (const rb of data.recent_books) {
-          if (rb && rb.isbn) enqueueTickerBook(rb);
-        }
-      }
-      if (lastBook && lastBook.isbn) {
-        enqueueTickerBook(lastBook);
       }
       return;
     }

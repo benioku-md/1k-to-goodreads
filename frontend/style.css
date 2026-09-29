@@ -1198,7 +1198,7 @@ body {
 
 .preview-label {
   font-family: var(--font-pixel);
-  font-size: 0.65rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--accent-terracotta);
   letter-spacing: 0.5px;
@@ -1285,100 +1285,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* Tek ve Canlı İşlenen Kitap Şeridi (Ayrı Terminal Konumu) */
-.live-book-ticker {
-  background: var(--bg-parchment-deep);
-  border: 1px dashed var(--ink-light);
-  border-radius: 4px;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.live-book-ticker.hidden {
-  display: none !important;
-}
-
-.ticker-header-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.ticker-pulse-dot {
-  width: 7px;
-  height: 7px;
-  background: var(--accent-terracotta);
-  border-radius: 50%;
-  animation: pulseGlow 1.2s ease-in-out infinite alternate;
-}
-
-.ticker-label {
-  font-family: var(--font-pixel);
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--accent-terracotta);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.ticker-content {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-.ticker-isbn {
-  font-family: var(--font-pixel);
-  font-size: 0.65rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(45, 35, 30, 0.08);
-  border: 1px solid rgba(45, 35, 30, 0.22);
-  color: var(--ink-espresso);
-  flex-shrink: 0;
-}
-
-.ticker-sep {
-  color: var(--ink-light);
-  opacity: 0.6;
-  font-size: 0.75rem;
-  flex-shrink: 0;
-}
-
-.ticker-title {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  color: var(--ink-espresso);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-.ticker-author {
-  font-family: var(--font-serif);
-  color: var(--ink-muted);
-  font-style: italic;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex-shrink: 2;
 }
 
 .rate-limit-note {
