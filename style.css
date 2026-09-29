@@ -1428,6 +1428,64 @@ body {
   line-height: 1.5;
 }
 
+/* Gizli Kütüphane İpucu Kutusu */
+.privacy-help-box {
+  background: var(--bg-parchment-deep);
+  border: 1px dashed var(--ink-light);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.privacy-help-box.hidden {
+  display: none !important;
+}
+
+.privacy-help-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-terracotta);
+}
+
+.privacy-help-desc {
+  font-size: 0.85rem;
+  color: var(--ink-espresso);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.privacy-help-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+  background: #FFF;
+  border: 1px solid rgba(45, 35, 30, 0.12);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.btn-privacy-direct {
+  margin-top: 4px;
+  background: var(--bg-parchment);
+  color: var(--ink-espresso);
+  font-size: 0.78rem;
+  padding: 8px 12px;
+  min-height: 40px;
+}
+
+.btn-privacy-direct:hover {
+  background: #FFF;
+}
+
 /* ------------------------------------------------------------------------------
    Sağ Sütun: Rehber, Puan Dönüşümü & Gizlilik
    ------------------------------------------------------------------------------ */

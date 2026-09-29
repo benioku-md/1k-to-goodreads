@@ -106,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Hata Elemanları
   const errorMessage = document.getElementById('errorMessage');
   const retryBtn = document.getElementById('retryBtn');
+  const privacyHelpBox = document.getElementById('privacyHelpBox');
 
   // Durum Değişkenleri
   let activeEventSource = null;
@@ -676,6 +677,12 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanupActiveStreams();
       updateEtaDisplay(null);
 
+      // Yalnızca kullanıcı o sayfada aktif değilse (arka plandaysa) retro bildirim sesi çal ve sekme başlığını güncelle
+      if (document.hidden) {
+        playRetroCompletionChime();
+        document.title = '✓ (TAMAMLANDI) 1000Kitap ➔ Goodreads';
+      }
+
       const total = data.total || data.total_count || data.current || data.current_count || 0;
       autoRetryCount = 0;
       finalCount.textContent = total;
@@ -757,6 +764,16 @@ document.addEventListener('DOMContentLoaded', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
     errorMessage.textContent = msg;
+
+    if (privacyHelpBox) {
+      const lower = (msg || '').toLowerCase();
+      if (lower.includes('gizli') || lower.includes('boş') || lower.includes('bos') || lower.includes('bulunamadı') || lower.includes('bulunamadi') || lower.includes('profil') || lower.includes('ayarlar')) {
+        privacyHelpBox.classList.remove('hidden');
+      } else {
+        privacyHelpBox.classList.add('hidden');
+      }
+    }
+
     showSection(errorSection);
   }
 
@@ -769,6 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
       liveBookCover.src = '';
     }
     if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
+    if (privacyHelpBox) privacyHelpBox.classList.add('hidden');
     usernameInput.value = '';
     handleUsernameValidation();
     const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');
@@ -783,9 +801,56 @@ document.addEventListener('DOMContentLoaded', () => {
   retryBtn.addEventListener('click', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
+    if (privacyHelpBox) privacyHelpBox.classList.add('hidden');
     handleUsernameValidation();
     showSection(formSection);
     usernameInput.focus();
+  });
+
+  // ============================================================================
+  // RETRO BILDIRIM SESI VE SEKME YONETIMI
+  // (Yalnizca kullanici o sayfada aktif degilken / baska sekmedeyken calar)
+  // ============================================================================
+  function playRetroCompletionChime() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+
+      // Rahatlatıcı, sıcak 8-bit retro arpej frekansları (E5, G5, B5, E6)
+      const freqs = [659.25, 783.99, 987.77, 1318.51];
+      const start = ctx.currentTime + 0.05;
+
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle'; // Yumuşak retro çip tınısı
+        osc.frequency.setValueAtTime(freq, start + (i * 0.08));
+
+        gain.gain.setValueAtTime(0, start + (i * 0.08));
+        gain.gain.linearRampToValueAtTime(0.14, start + (i * 0.08) + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + (i * 0.08) + 0.20);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(start + (i * 0.08));
+        osc.stop(start + (i * 0.08) + 0.21);
+      });
+
+      setTimeout(() => {
+        try { ctx.close(); } catch (e) {}
+      }, 900);
+    } catch (e) {
+      console.warn('Retro ses calinamadi:', e);
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && document.title.includes('TAMAMLANDI')) {
+      document.title = '1000Kitap ➔ Goodreads | Okuma Geçmişi Aktarıcı';
+    }
   });
 
   // ============================================================================
