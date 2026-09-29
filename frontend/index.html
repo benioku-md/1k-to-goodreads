@@ -235,15 +235,24 @@
 
             <!-- Canlı Taranan Kitap Önizleme Kartı -->
             <div id="liveBookCard" class="live-book-preview hidden">
-              <div class="preview-label">SU AN TARANAN KITAP:</div>
+              <div class="preview-header">
+                <span class="preview-label">İŞLENEN KİTAPLAR (CANLI AKIŞ):</span>
+              </div>
               <div class="preview-content">
                 <div class="cover-wrapper" id="bookCoverWrapper">
                   <i id="bookPlaceholderIcon" class="fa-solid fa-book-open book-placeholder-icon"></i>
                   <img id="liveBookCover" src="" alt="Kitap Kapağı" class="book-cover-img hidden" loading="lazy">
                 </div>
-                <div class="book-details">
-                  <div id="liveBookTitle" class="book-title">Kitap Adı</div>
-                  <div id="liveBookAuthor" class="book-author">Yazar Adı</div>
+                <div class="book-stream-container">
+                  <div class="live-current-row">
+                    <div id="liveBookTitle" class="book-title">Kitap Adı</div>
+                    <div class="book-current-meta">
+                      <span id="liveBookAuthor" class="book-author">Yazar Adı</span>
+                      <span id="liveBookIsbn" class="book-tag-isbn hidden"></span>
+                      <span id="liveBookRating" class="book-tag-rating hidden"></span>
+                    </div>
+                  </div>
+                  <div id="liveRecentStream" class="live-recent-stream hidden"></div>
                 </div>
               </div>
             </div>

@@ -70,6 +70,7 @@ class JobState:
         self.total_count: int = 0
         self.percent: int = 0
         self.last_book: Optional[dict] = None
+        self.recent_books: List[dict] = []
         self.csv_bytes: Optional[bytes] = None
         self.error_message: Optional[str] = None
         self.preview_books: List[dict] = []
@@ -112,6 +113,7 @@ class JobState:
             "total_count": self.total_count,
             "percent": self.percent,
             "last_book": self.last_book,
+            "recent_books": self.recent_books,
             "preview_books": self.preview_books,
             "error_message": self.error_message
         }
@@ -579,11 +581,22 @@ async def scrape_user_books(job: JobState):
                 job.message = f"ISBN numaraları tamamlanıyor: {resolved_count} / {target_total} (%{pct_isbn})..."
                 if raw_title:
                     existing_cover = job.last_book.get("cover") if job.last_book else ""
+                    isbn_val = book.get("isbn") or ""
+                    rating_val = book.get("rating") or ""
                     job.last_book = {
                         "title": raw_title,
                         "author": raw_author,
-                        "cover": cover_to_send or existing_cover
+                        "cover": cover_to_send or existing_cover,
+                        "isbn": isbn_val,
+                        "rating": rating_val
                     }
+                    recent_entry = {
+                        "title": raw_title,
+                        "author": raw_author,
+                        "isbn": isbn_val,
+                        "rating": rating_val
+                    }
+                    job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != raw_title][:2]
 
                 rem_target = max(0, target_total - resolved_count)
                 eta_sec = max(1, math.ceil(rem_target / 9) + 1)
@@ -596,7 +609,8 @@ async def scrape_user_books(job: JobState):
                     "total": target_total,
                     "percent": pct_isbn,
                     "estimated_seconds": eta_sec,
-                    "last_book": job.last_book
+                    "last_book": job.last_book,
+                    "recent_books": job.recent_books
                 })
 
         shelves_to_process = []
@@ -761,11 +775,22 @@ async def scrape_user_books(job: JobState):
                         }
                         collected_books.append(book_entry)
                         job.current_count = len(collected_books)
+                        isbn_val = book_entry.get("isbn") or ""
+                        rating_val = book_entry.get("rating") or ""
                         job.last_book = {
                             "title": title,
                             "author": author,
-                            "cover": book_entry["cover"]
+                            "cover": book_entry["cover"],
+                            "isbn": isbn_val,
+                            "rating": rating_val
                         }
+                        recent_entry = {
+                            "title": title,
+                            "author": author,
+                            "isbn": isbn_val,
+                            "rating": rating_val
+                        }
+                        job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != title][:2]
 
                         # Eşzamanlı boru hattı: Kitabı bekletmeden anında Kitapyurdu işçi havuzuna fırlat
                         await isbn_queue.put(book_entry)
@@ -791,7 +816,8 @@ async def scrape_user_books(job: JobState):
                         "total": job.total_count,
                         "percent": job.percent,
                         "estimated_seconds": eta_scrape,
-                        "last_book": job.last_book
+                        "last_book": job.last_book,
+                        "recent_books": job.recent_books
                     })
 
                     has_more = bool(sonuc.get("hasMore", False))
@@ -1238,6 +1264,7 @@ async def stream_job_events(job_id: str, request: Request):
             "total": job.total_count,
             "percent": job.percent,
             "last_book": job.last_book,
+            "recent_books": job.recent_books,
             "preview_books": job.preview_books,
             "error": job.error_message
         }
