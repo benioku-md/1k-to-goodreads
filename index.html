@@ -233,27 +233,17 @@
               </div>
             </div>
 
-            <!-- Canlı Taranan Kitap Önizleme Kartı -->
-            <div id="liveBookCard" class="live-book-preview hidden">
-              <div class="preview-header">
-                <span class="preview-label">İŞLENEN KİTAPLAR (CANLI AKIŞ):</span>
+            <!-- Tek ve Hızlı Canlı İşlenen Kitap Şeridi -->
+            <div id="liveBookTicker" class="live-book-ticker hidden">
+              <div class="ticker-header-mini">
+                <span class="ticker-pulse-dot"></span>
+                <span class="ticker-label">İŞLENEN KİTAP:</span>
               </div>
-              <div class="preview-content">
-                <div class="cover-wrapper" id="bookCoverWrapper">
-                  <i id="bookPlaceholderIcon" class="fa-solid fa-book-open book-placeholder-icon"></i>
-                  <img id="liveBookCover" src="" alt="Kitap Kapağı" class="book-cover-img hidden" loading="lazy">
-                </div>
-                <div class="book-stream-container">
-                  <div class="live-current-row">
-                    <div id="liveBookTitle" class="book-title">Kitap Adı</div>
-                    <div class="book-current-meta">
-                      <span id="liveBookAuthor" class="book-author">Yazar Adı</span>
-                      <span id="liveBookIsbn" class="book-tag-isbn hidden"></span>
-                      <span id="liveBookRating" class="book-tag-rating hidden"></span>
-                    </div>
-                  </div>
-                  <div id="liveRecentStream" class="live-recent-stream hidden"></div>
-                </div>
+              <div class="ticker-content">
+                <span id="liveTickerIsbn" class="ticker-isbn">ISBN: Çözülüyor...</span>
+                <span class="ticker-sep">•</span>
+                <span id="liveTickerTitle" class="ticker-title">Kitap Adı</span>
+                <span id="liveTickerAuthor" class="ticker-author">— Yazar Adı</span>
               </div>
             </div>
 

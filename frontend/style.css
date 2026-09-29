@@ -1175,205 +1175,98 @@ body {
   line-height: 1.2;
 }
 
-/* Canlı Taranan Kitap Önizlemesi (Kompakt Hibrit Akış) */
-.live-book-preview {
+/* Tek ve Hızlı Canlı İşlenen Kitap Şeridi (Minimalist Ticker) */
+.live-book-ticker {
   background: var(--bg-parchment-deep);
   border: 1px dashed var(--ink-light);
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.preview-label {
+.live-book-ticker.hidden {
+  display: none !important;
+}
+
+.ticker-header-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ticker-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent-terracotta);
+  border-radius: 50%;
+  animation: pulseGlow 1.2s ease-in-out infinite alternate;
+}
+
+.ticker-label {
   font-family: var(--font-pixel);
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--accent-terracotta);
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
-.preview-content {
+.ticker-content {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.cover-wrapper {
-  position: relative;
-  width: 44px;
-  height: 62px;
-  border: var(--pixel-border);
-  background: #FFF;
-  border-radius: 3px;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.book-placeholder-icon {
-  font-size: 1.25rem;
-  color: var(--ink-muted);
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.book-placeholder-icon.hidden {
-  display: none !important;
-}
-
-.book-cover-img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  display: block;
-  z-index: 2;
-  background: #FFF;
-}
-
-.book-cover-img.hidden {
-  display: none !important;
-}
-
-.book-stream-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
+  gap: 6px;
+  font-size: 0.82rem;
   min-width: 0;
   flex: 1;
   overflow: hidden;
-}
-
-.live-current-row {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.book-title {
-  font-family: var(--font-serif);
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--ink-espresso);
-  line-height: 1.25;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.book-current-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 0.78rem;
   line-height: 1.2;
 }
 
-.book-author {
-  color: var(--ink-muted);
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 180px;
-}
-
-.book-tag-isbn, .book-tag-rating {
+.ticker-isbn {
   font-family: var(--font-pixel);
-  font-size: 0.62rem;
-  padding: 1px 5px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
   border-radius: 3px;
   background: rgba(45, 35, 30, 0.08);
-  border: 1px solid rgba(45, 35, 30, 0.2);
+  border: 1px solid rgba(45, 35, 30, 0.22);
   color: var(--ink-espresso);
-  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.ticker-sep {
+  color: var(--ink-light);
+  opacity: 0.6;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ticker-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--ink-espresso);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.book-tag-rating {
-  background: #FFF8E7;
-  border-color: #E0C870;
-  color: #7A5B00;
-}
-
-.live-recent-stream {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 2px;
-  padding-top: 3px;
-  border-top: 1px dashed rgba(45, 35, 30, 0.18);
   min-width: 0;
+  flex-shrink: 1;
 }
 
-.live-recent-stream.hidden {
-  display: none !important;
-}
-
-.recent-stream-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.70rem;
+.ticker-author {
+  font-family: var(--font-serif);
   color: var(--ink-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.stream-check {
-  color: var(--accent-sage);
-  font-weight: bold;
-  font-size: 0.70rem;
-  flex-shrink: 0;
-}
-
-.stream-title {
-  font-weight: 600;
-  color: var(--ink-espresso);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 180px;
-}
-
-.stream-author {
-  color: var(--ink-light);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-style: italic;
-  max-width: 120px;
-}
-
-.stream-isbn {
-  font-family: var(--font-pixel);
-  font-size: 0.60rem;
-  color: var(--ink-light);
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 2;
 }
 
 .rate-limit-note {

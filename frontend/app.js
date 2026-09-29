@@ -75,17 +75,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const countDisplay = document.getElementById('countDisplay');
   const percentDisplay = document.getElementById('percentDisplay');
 
-  // Canlı Kitap Önizleme Elemanları
-  const liveBookCard = document.getElementById('liveBookCard');
-  const liveBookCover = document.getElementById('liveBookCover');
-  const liveBookTitle = document.getElementById('liveBookTitle');
-  const liveBookAuthor = document.getElementById('liveBookAuthor');
-  const bookCoverWrapper = document.getElementById('bookCoverWrapper');
-  const bookPlaceholderIcon = document.getElementById('bookPlaceholderIcon');
-  const liveBookIsbn = document.getElementById('liveBookIsbn');
-  const liveBookRating = document.getElementById('liveBookRating');
-  const liveRecentStream = document.getElementById('liveRecentStream');
-  let clientRecentBooks = [];
+  // Canlı İşlenen Tek Kitap Şeridi Elemanları
+  const liveBookTicker = document.getElementById('liveBookTicker');
+  const liveTickerIsbn = document.getElementById('liveTickerIsbn');
+  const liveTickerTitle = document.getElementById('liveTickerTitle');
+  const liveTickerAuthor = document.getElementById('liveTickerAuthor');
 
   // Tamamlanma & İndirme Elemanları
   const finalCount = document.getElementById('finalCount');
@@ -496,17 +490,10 @@ document.addEventListener('DOMContentLoaded', () => {
     countDisplay.textContent = '0 / --';
     percentDisplay.textContent = '%0';
 
-    liveBookCard.classList.add('hidden');
-    liveBookCover.classList.add('hidden');
-    liveBookCover.src = '';
-    if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
-    if (liveBookIsbn) liveBookIsbn.classList.add('hidden');
-    if (liveBookRating) liveBookRating.classList.add('hidden');
-    clientRecentBooks = [];
-    if (liveRecentStream) {
-      liveRecentStream.innerHTML = '';
-      liveRecentStream.classList.add('hidden');
-    }
+    if (liveBookTicker) liveBookTicker.classList.add('hidden');
+    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+    if (liveTickerTitle) liveTickerTitle.textContent = '';
+    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
   }
 
   // ============================================================================
@@ -658,64 +645,23 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       updateEtaDisplay(etaSec, data.status || 'scraping', false);
 
-      // Canlı taranan kitap kartını ve kompakt akışını güncelle
+      // Canlı işlenen tek kitap şeridini anında ve milisaniyelik güncelle
       const lastBook = data.last_book;
       if (lastBook && lastBook.title) {
-        liveBookTitle.textContent = lastBook.title;
-        liveBookAuthor.textContent = lastBook.author || 'Bilinmeyen Yazar';
+        if (liveTickerTitle) liveTickerTitle.textContent = lastBook.title;
+        if (liveTickerAuthor) liveTickerAuthor.textContent = lastBook.author ? `— ${lastBook.author}` : '';
 
-        // ISBN ve Puan rozetleri
-        if (lastBook.isbn && liveBookIsbn) {
-          liveBookIsbn.textContent = `ISBN: ${lastBook.isbn}`;
-          liveBookIsbn.classList.remove('hidden');
-        } else if (liveBookIsbn) {
-          liveBookIsbn.classList.add('hidden');
-        }
-
-        if (lastBook.rating && liveBookRating) {
-          liveBookRating.textContent = `⭐ ${lastBook.rating}/10`;
-          liveBookRating.classList.remove('hidden');
-        } else if (liveBookRating) {
-          liveBookRating.classList.add('hidden');
-        }
-
-        if (lastBook.cover) {
-          liveBookCover.src = lastBook.cover;
-          liveBookCover.classList.remove('hidden');
-          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.add('hidden');
-        } else {
-          liveBookCover.classList.add('hidden');
-          if (bookPlaceholderIcon) bookPlaceholderIcon.classList.remove('hidden');
-        }
-
-        // Son işlenen 2 kitabı kompakt canlı akış olarak listele
-        if (data.recent_books && Array.isArray(data.recent_books) && data.recent_books.length > 0) {
-          clientRecentBooks = data.recent_books;
-        } else {
-          if (!clientRecentBooks.some(b => b && b.title === lastBook.title)) {
-            clientRecentBooks.unshift(lastBook);
-            if (clientRecentBooks.length > 3) clientRecentBooks.pop();
-          }
-        }
-
-        const previousBooks = clientRecentBooks.filter(b => b && b.title !== lastBook.title).slice(0, 2);
-        if (liveRecentStream) {
-          if (previousBooks.length > 0) {
-            liveRecentStream.innerHTML = previousBooks.map(b => `
-              <div class="recent-stream-item">
-                <span class="stream-check">✓</span>
-                <span class="stream-title" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</span>
-                <span class="stream-author">— ${escapeHtml(b.author || '')}</span>
-                ${b.isbn ? `<span class="stream-isbn">(ISBN: ${escapeHtml(b.isbn)})</span>` : ''}
-              </div>
-            `).join('');
-            liveRecentStream.classList.remove('hidden');
+        if (liveTickerIsbn) {
+          if (lastBook.isbn && String(lastBook.isbn).trim() !== '') {
+            liveTickerIsbn.textContent = `ISBN: ${lastBook.isbn}`;
+            liveTickerIsbn.style.display = 'inline-block';
           } else {
-            liveRecentStream.classList.add('hidden');
+            liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+            liveTickerIsbn.style.display = 'inline-block';
           }
         }
 
-        liveBookCard.classList.remove('hidden');
+        if (liveBookTicker) liveBookTicker.classList.remove('hidden');
       }
       return;
     }
@@ -812,11 +758,10 @@ document.addEventListener('DOMContentLoaded', () => {
   resetBtn.addEventListener('click', () => {
     clearActiveJobFromStorage();
     cleanupActiveStreams();
-    clientRecentBooks = [];
-    if (liveRecentStream) {
-      liveRecentStream.innerHTML = '';
-      liveRecentStream.classList.add('hidden');
-    }
+    if (liveBookTicker) liveBookTicker.classList.add('hidden');
+    if (liveTickerIsbn) liveTickerIsbn.textContent = 'ISBN: Çözülüyor...';
+    if (liveTickerTitle) liveTickerTitle.textContent = '';
+    if (liveTickerAuthor) liveTickerAuthor.textContent = '';
     usernameInput.value = '';
     handleUsernameValidation();
     const defaultRadio = document.querySelector('input[name="shelf"][value="hepsi"]');
