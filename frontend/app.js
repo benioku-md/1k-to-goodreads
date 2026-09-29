@@ -849,7 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && document.title.includes('TAMAMLANDI')) {
-      document.title = '1000Kitap ➔ Goodreads | Okuma Geçmişi Aktarıcı';
+      document.title = '1000Kitap ➔ Goodreads | Kütüphane Aktarıcı';
     }
   });
 
