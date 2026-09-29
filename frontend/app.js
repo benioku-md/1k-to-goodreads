@@ -186,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================================
   let etaCountdownTimer = null;
   let currentEtaSeconds = 0;
+  let isQueueTimer = false;
 
   function formatEta(seconds) {
     if (!seconds || seconds <= 0) return null;
@@ -195,9 +196,11 @@ document.addEventListener('DOMContentLoaded', () => {
     return secs > 0 ? `~${mins} dk ${secs} sn` : `~${mins} dk`;
   }
 
-  function updateEtaDisplay(estimatedSeconds, status) {
+  function updateEtaDisplay(estimatedSeconds, status, isQueue = false) {
     if (!queueEtaBox || !queueEtaText) return;
-    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+
+    // İşlem bittiğinde/iptalde veya sırada 1. olup henüz aktarımı başlamamışken gizle
+    if (status === 'completed' || status === 'failed' || status === 'cancelled' || (status === 'queued' && !isQueue)) {
       if (etaCountdownTimer) {
         clearInterval(etaCountdownTimer);
         etaCountdownTimer = null;
@@ -206,15 +209,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    isQueueTimer = isQueue;
     if (estimatedSeconds && estimatedSeconds > 0) {
       currentEtaSeconds = estimatedSeconds;
     } else if (!currentEtaSeconds || currentEtaSeconds <= 0) {
-      currentEtaSeconds = status === 'queued' ? 4 : 12;
+      currentEtaSeconds = isQueue ? 25 : 12;
     }
 
+    const label = isQueueTimer ? 'Tahmini Bekleme:' : 'Kalan Süre:';
     const formatted = formatEta(currentEtaSeconds);
     if (formatted) {
-      queueEtaText.textContent = `Kalan Süre: ${formatted}`;
+      queueEtaText.textContent = `${label} ${formatted}`;
       queueEtaBox.classList.remove('hidden');
     }
 
@@ -224,7 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
           currentEtaSeconds--;
           const f = formatEta(currentEtaSeconds);
           if (f && queueEtaText) {
-            queueEtaText.textContent = `Kalan Süre: ${f}`;
+            const prefix = isQueueTimer ? 'Tahmini Bekleme:' : 'Kalan Süre:';
+            queueEtaText.textContent = `${prefix} ${f}`;
           }
         }
       }, 1000);
@@ -476,15 +482,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (peopleAhead > 0) {
       queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
+      const waitSec = jobData.estimated_seconds || (peopleAhead * 25);
+      updateEtaDisplay(waitSec, 'queued', true);
     } else {
       queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
+      updateEtaDisplay(0, 'queued', false); // Kendi işlemi başlayınca kum saati gelecek
     }
-
-    let etaSec = jobData.estimated_seconds;
-    if (!etaSec || etaSec <= 0) {
-      etaSec = peopleAhead > 0 ? (peopleAhead * 25) : 4;
-    }
-    updateEtaDisplay(etaSec, 'queued');
 
     progressBar.style.width = '3%';
     progressBar.setAttribute('aria-valuenow', '3');
@@ -577,32 +580,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (peopleAhead > 0) {
         queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${peopleAhead} kişi var)...`;
+        const waitSec = data.estimated_seconds || (peopleAhead * 25);
+        updateEtaDisplay(waitSec, 'queued', true);
       } else {
         queueInfoText.textContent = `Sıranız: #${pos} (Aktarım başlatılıyor)...`;
+        updateEtaDisplay(0, 'queued', false); // Kum saati işlem başlayınca gelecek!
       }
-
-      let etaSec = data.estimated_seconds;
-      if (!etaSec || etaSec <= 0) {
-        etaSec = peopleAhead > 0 ? (peopleAhead * 25) : 4;
-      }
-      updateEtaDisplay(etaSec, 'queued');
       return;
     }
 
-    // 2. TARAMA VEYA ISBN ÇÖZÜMLEME DURUMU
-    const isIsbnResolving = data.status && (data.status.startsWith('resolving_isbn') || data.status === 'resolving_isbn');
-    if (data.status === 'scraping' || isIsbnResolving || data.type === 'progress' || data.type === 'status') {
-      if (data.status === 'resolving_isbn_strict') {
-        statusBadgeText.textContent = 'ISBN (KATI MOD)';
+    // 2. TARAMA, ISBN ÇÖZÜMLEME VEYA İNCELEME DURUMU
+    const isReviews = data.status === 'fetching_reviews' || (data.message && (data.message.includes('inceleme') || data.message.includes('İnceleme')));
+    const isIsbnResolving = data.status && (data.status.startsWith('resolving_isbn') || data.status === 'resolving_isbn') || (data.message && (data.message.includes('ISBN') || data.message.includes('Kitapyurdu')));
+    const isScraping = data.status === 'scraping' || (data.status && data.status.startsWith('scraping_')) || data.type === 'progress' || data.type === 'status';
+
+    if (isReviews || isIsbnResolving || isScraping) {
+      if (isReviews) {
+        statusBadgeText.textContent = 'İNCELEMELER ALINIYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
-      } else if (data.status === 'resolving_isbn_loose') {
-        statusBadgeText.textContent = 'ISBN (GEVŞEK MOD)';
-        statusBadge.style.borderColor = 'var(--accent-terracotta)';
-      } else if (data.status === 'resolving_isbn_ky' || isIsbnResolving) {
+      } else if (isIsbnResolving) {
         statusBadgeText.textContent = 'ISBN ÇÖZÜLÜYOR';
         statusBadge.style.borderColor = 'var(--accent-terracotta)';
+      } else if (data.status === 'scraping_read' || data.shelf_display === 'Okuduklarım' || (data.message && data.message.includes('Okuduklarım'))) {
+        statusBadgeText.textContent = 'OKUDUKLARIM TARANIYOR';
+        statusBadge.style.borderColor = 'var(--accent-sage)';
+      } else if (data.status === 'scraping_to_read' || data.shelf_display === 'Okumak İstediklerim' || (data.message && (data.message.includes('Okumak İstediklerim') || data.message.includes('Okunacak')))) {
+        statusBadgeText.textContent = 'OKUNACAKLAR TARANIYOR';
+        statusBadge.style.borderColor = 'var(--accent-sage)';
+      } else if (data.status === 'scraping_currently_reading' || data.shelf_display === 'Şu An Okuduklarım' || (data.message && data.message.includes('Şu An Okuduklarım'))) {
+        statusBadgeText.textContent = 'OKUNANLAR TARANIYOR';
+        statusBadge.style.borderColor = 'var(--accent-sage)';
       } else {
-        statusBadgeText.textContent = 'TARANIYOR';
+        statusBadgeText.textContent = 'KİTAPLAR TARANIYOR';
         statusBadge.style.borderColor = 'var(--accent-sage)';
       }
 
@@ -610,7 +619,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const total = data.total !== undefined ? data.total : (data.total_count !== undefined ? data.total_count : 0);
       const percent = data.percent !== undefined ? data.percent : (total > 0 ? Math.min(99, Math.round((current / total) * 100)) : 0);
 
-      if (isIsbnResolving || (data.message && (data.message.includes('ISBN') || data.message.includes('Kitapyurdu')))) {
+      if (isReviews) {
+        queueInfoText.textContent = data.message || 'Kitap incelemeleri alınıyor ve eşleniyor...';
+      } else if (isIsbnResolving) {
         queueInfoText.textContent = data.message || `ISBN numaraları tamamlanıyor: ${current} / ${total || '?'} (%${percent})...`;
       } else {
         queueInfoText.textContent = data.message || (total > 0 
@@ -635,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
           etaSec = 15;
         }
       }
-      updateEtaDisplay(etaSec, data.status || 'scraping');
+      updateEtaDisplay(etaSec, data.status || 'scraping', false);
 
       // Canlı taranan kitap kartını güncelle
       const lastBook = data.last_book;

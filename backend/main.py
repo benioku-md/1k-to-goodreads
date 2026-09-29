@@ -768,9 +768,12 @@ async def scrape_user_books(job: JobState):
                     rem_scrape = max(0, (job.total_count or len(collected_books)) - job.current_count)
                     eta_scrape = max(1, math.ceil(rem_scrape / 9) + 1)
 
+                    shelf_status = "scraping_read" if goodreads_shelf == "read" else ("scraping_to_read" if goodreads_shelf == "to-read" else "scraping_currently_reading")
                     await job.broadcast({
                         "type": "progress",
-                        "status": "scraping",
+                        "status": shelf_status,
+                        "shelf_display": shelf_display,
+                        "shelf_type": goodreads_shelf,
                         "message": job.message,
                         "current": job.current_count,
                         "total": job.total_count,
@@ -805,6 +808,17 @@ async def scrape_user_books(job: JobState):
 
         # İncelemeleri bekle ve kitaplarla eşle
         if job.include_reviews and review_task:
+            job.status = "fetching_reviews"
+            job.message = "Kitap incelemeleri alınıyor ve eşleniyor..."
+            await job.broadcast({
+                "type": "progress",
+                "status": "fetching_reviews",
+                "message": job.message,
+                "current": job.current_count,
+                "total": job.total_count,
+                "percent": job.percent,
+                "estimated_seconds": 2
+            })
             try:
                 reviews_by_id, reviews_by_title = await review_task
                 for b in collected_books:
@@ -1088,10 +1102,16 @@ async def create_export_job(payload: ExportRequest, request: Request):
 
     if people_ahead == 0:
         job.message = "Sıranız: #1 (Aktarım başlatılıyor)..."
-        job.estimated_seconds = 4
+        job.estimated_seconds = 0
     else:
         job.message = f"Kuyruktasınız (Önünüzde {people_ahead} kişi var)..."
-        job.estimated_seconds = people_ahead * 25
+        if running_active:
+            act = JOBS.get(CURRENT_RUNNING_JOB_ID)
+            rem_act = max(0, act.total_count - act.current_count) if (act and act.total_count > 0) else 25
+            act_sec = math.ceil(rem_act / 9) + 1
+        else:
+            act_sec = 0
+        job.estimated_seconds = act_sec + (max(0, people_ahead - 1) * 25)
 
     await JOB_QUEUE.put(job_id)
 

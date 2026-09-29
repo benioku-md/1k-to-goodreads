@@ -970,9 +970,16 @@ body {
 
 .progress-header {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.progress-header-top {
+  display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  width: 100%;
   gap: 8px;
 }
 
@@ -982,11 +989,12 @@ body {
   gap: 8px;
   background: var(--bg-parchment-deep);
   border: var(--pixel-border);
-  padding: 4px 10px;
+  padding: 5px 11px;
   border-radius: 4px;
   font-family: var(--font-pixel);
   font-size: 0.76rem;
   font-weight: 600;
+  line-height: 1;
 }
 
 .pulse-dot {
@@ -1008,25 +1016,40 @@ body {
   font-size: 1.4rem;
   color: var(--ink-espresso);
   letter-spacing: 0.5px;
+  line-height: 1.25;
+  min-height: 1.8rem;
+  width: 100%;
+  word-break: break-word;
 }
 
 .queue-eta-box {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
+  gap: 7px;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #5D5245;
   background: rgba(45, 35, 30, 0.06);
-  padding: 4px 10px;
+  padding: 5px 11px;
   border-radius: 4px;
   border: 1px dashed rgba(45, 35, 30, 0.25);
-  margin-top: 4px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .queue-eta-box .eta-icon {
   color: var(--accent-terracotta);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transform: translateY(0.5px); /* Tam dikey optik ortalama */
+}
+
+.queue-eta-box span {
+  display: inline-block;
+  line-height: 1;
 }
 
 .queue-eta-box.hidden {
