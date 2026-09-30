@@ -701,7 +701,6 @@ async def scrape_user_books(job: JobState):
             nonlocal resolved_count
             while True:
                 if job.cancelled:
-                    isbn_queue.task_done()
                     break
                 book = await isbn_queue.get()
                 if book is None or job.cancelled:
