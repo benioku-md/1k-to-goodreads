@@ -52,7 +52,12 @@ GOODREADS_CSV_HEADERS = [
     "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf", "Read Count", "My Review"
 ]
 
-CURRENT_1K_APP_VERSION = "4.58.744"
+CURRENT_1K_APP_VERSION = "4.58.745"
+MIN_PAGE_DELAY = 1.30  # Temel bekleme süresi (+0.4s eklenmiş güvenli taban)
+MAX_PAGE_DELAY = 2.80  # Yoğunluk anında çıkılabilecek en güvenli tavan
+CURRENT_ADAPTIVE_DELAY = 1.30
+CONSECUTIVE_SUCCESS_COUNT = 0
+API_HEALTHY = True
 
 class ExportRequest(BaseModel):
     username: str
@@ -462,6 +467,124 @@ def clean_review_text(yorum_data: dict) -> str:
     raw = yorum_data.get("metin") or yorum_data.get("icerik") or ""
     return str(raw).strip()[:20000]
 
+# ==============================================================================
+# DAYANIKLILIK VE ADAPTIF GÜVENLİK MOTORU (RESILIENCE & RETRY ENGINE)
+# ==============================================================================
+def sync_1k_version(data: dict):
+    """1000Kitap API yanıtındaki '_api_surum' alanını izleyip sürümü dinamik olarak günceller."""
+    global CURRENT_1K_APP_VERSION
+    if isinstance(data, dict):
+        v = data.get("_api_surum")
+        if v and str(v).strip() and str(v).strip() != CURRENT_1K_APP_VERSION:
+            logger.info(f"[Auto-Version] 1000Kitap API sürümü dinamik güncellendi: {CURRENT_1K_APP_VERSION} -> {v}")
+            CURRENT_1K_APP_VERSION = str(v).strip()
+
+def adapt_congestion(slow_down: bool):
+    """1000Kitap sunucu yanıt sürelerine ve durum kodlarına göre istek aralığını dinamik dengeler."""
+    global CURRENT_ADAPTIVE_DELAY, CONSECUTIVE_SUCCESS_COUNT
+    if slow_down:
+        CONSECUTIVE_SUCCESS_COUNT = 0
+        CURRENT_ADAPTIVE_DELAY = min(MAX_PAGE_DELAY, CURRENT_ADAPTIVE_DELAY + 0.40)
+        logger.warning(f"[Congestion] 1000Kitap frenlendi: Yeni istek aralığı {CURRENT_ADAPTIVE_DELAY:.2f}s")
+    else:
+        CONSECUTIVE_SUCCESS_COUNT += 1
+        if CONSECUTIVE_SUCCESS_COUNT >= 6 and CURRENT_ADAPTIVE_DELAY > MIN_PAGE_DELAY:
+            CONSECUTIVE_SUCCESS_COUNT = 0
+            CURRENT_ADAPTIVE_DELAY = max(MIN_PAGE_DELAY, CURRENT_ADAPTIVE_DELAY - 0.15)
+            logger.info(f"[Congestion] 1000Kitap rahatladı: Yeni istek aralığı {CURRENT_ADAPTIVE_DELAY:.2f}s")
+
+async def fetch_1k_with_retry(
+    session: cffi_requests.AsyncSession,
+    url: str,
+    params: dict,
+    headers: dict,
+    job: Optional[JobState] = None,
+    max_retries: int = 3
+) -> Tuple[cffi_requests.AsyncSession, Optional[cffi_requests.Response], Optional[dict]]:
+    """
+    1000Kitap API'sine yapılan istekleri sessizce yöneten zırh fonksiyonu.
+    - 429 veya geçici ağ hatalarında kullanıcıya hissettirmeden backoff ile yeniden dener.
+    - Oturumu ve cihaz kodunu rotasyona sokar.
+    - Başarılı yanıttan güncel API sürümünü öğrenir.
+    - Adaptif frenleme (congestion control) uygular.
+    """
+    resp = None
+    data = None
+    active_session = session
+
+    for attempt in range(max_retries):
+        if job and job.cancelled:
+            raise Exception("İşlem kullanıcı tarafından iptal edildi.")
+
+        # Her denemede daima güncel sürüm ve User-Agent kullan
+        params["appVersion"] = CURRENT_1K_APP_VERSION
+        headers["User-Agent"] = f"okur/{CURRENT_1K_APP_VERSION} (Android 14; Mobile)"
+
+        try:
+            start_t = time.time()
+            resp = await active_session.get(url, params=params, headers=headers, timeout=7.0)
+            elapsed = time.time() - start_t
+
+            if elapsed > 2.5:
+                adapt_congestion(slow_down=True)
+
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    sync_1k_version(data)
+
+                    # 1000Kitap bazen 200 içinde "hedefEngeli" döndürür
+                    if data.get("hata") == 1 and data.get("hataTuru") in ("hedefEngeli", "hedef_engeli", 1):
+                        msg = data.get("hataMesaji") or ""
+                        if "engellendi" in msg.lower() or "olağandışı" in msg.lower():
+                            if attempt < max_retries - 1:
+                                adapt_congestion(slow_down=True)
+                                wait_time = min(4.0, float(data.get("tekrarSn", 2.0)))
+                                headers["1-CIHAZ-KODU"] = generate_device_code()
+                                await asyncio.sleep(wait_time)
+                                continue
+
+                    adapt_congestion(slow_down=False)
+                    return active_session, resp, data
+                except Exception:
+                    return active_session, resp, None
+
+            elif resp.status_code in (403, 429):
+                adapt_congestion(slow_down=True)
+                if attempt < max_retries - 1:
+                    if job:
+                        job.message = "Sunucu yanıtı dengeleniyor..."
+                    try:
+                        await active_session.close()
+                    except Exception:
+                        pass
+                    active_session = cffi_requests.AsyncSession(impersonate="chrome120")
+                    headers["1-CIHAZ-KODU"] = generate_device_code()
+                    backoff_sleep = 1.5 * (attempt + 1)
+                    await asyncio.sleep(backoff_sleep)
+                    continue
+                else:
+                    return active_session, resp, None
+
+            elif resp.status_code in (500, 502, 503, 504):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                    continue
+                else:
+                    return active_session, resp, None
+            else:
+                return active_session, resp, None
+
+        except Exception as net_err:
+            if attempt < max_retries - 1:
+                adapt_congestion(slow_down=True)
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            else:
+                raise net_err
+
+    return active_session, resp, data
+
 async def fetch_user_reviews(session, username: str, headers: dict, job: Optional[JobState] = None) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
     1000Kitap mobil API'sinden kullanıcının yazdığı tüm incelemeleri çeker.
@@ -473,6 +596,7 @@ async def fetch_user_reviews(session, username: str, headers: dict, job: Optiona
     page = 1
     has_more = True
     max_pages = 50
+    active_session = session
 
     while has_more and page <= max_pages:
         if job and job.cancelled:
@@ -481,15 +605,13 @@ async def fetch_user_reviews(session, username: str, headers: dict, job: Optiona
             "id": username,
             "bolum": "incelemeler",
             "sayfa": page,
-            "appVersion": CURRENT_1K_APP_VERSION,
             "os": "android",
             "hl": "tr"
         }
         try:
-            resp = await session.get(url, params=params, headers=headers, timeout=6.0)
-            if resp.status_code != 200:
+            active_session, resp, data = await fetch_1k_with_retry(active_session, url, params, headers, job=job, max_retries=3)
+            if not resp or resp.status_code != 200 or not data:
                 break
-            data = resp.json()
             sonuc = data.get("_sonuc") or data.get("sonuc") or {}
             liste = sonuc.get("liste", [])
             if not liste:
@@ -533,7 +655,8 @@ async def fetch_user_reviews(session, username: str, headers: dict, job: Optiona
             has_more = bool(sonuc.get("hasMore", False))
             page += 1
             if has_more:
-                await asyncio.sleep(0.70)
+                review_delay = max(0.70, CURRENT_ADAPTIVE_DELAY * 0.55)
+                await asyncio.sleep(review_delay)
         except Exception:
             break
 
@@ -731,43 +854,21 @@ async def scrape_user_books(job: JobState):
             "kadi": job.username,
             "raf": "okuduklari",
             "sayfa": 1,
-            "appVersion": CURRENT_1K_APP_VERSION,
             "os": "android",
             "hl": "tr"
         }
 
-        verify_resp = None
-        for retry in range(2):
-            if job.cancelled:
-                raise Exception("İşlem kullanıcı tarafından iptal edildi.")
-            try:
-                verify_resp = await session.get(url, params=verify_params, headers=headers, timeout=6.0)
-                if verify_resp.status_code in (403, 429):
-                    if retry == 0:
-                        await asyncio.sleep(1.0)
-                        try:
-                            await session.close()
-                        except Exception:
-                            pass
-                        session = cffi_requests.AsyncSession(impersonate="chrome120")
-                        headers["1-CIHAZ-KODU"] = generate_device_code()
-                        continue
-                    break
-                break
-            except Exception as net_err:
-                if retry == 1:
-                    raise net_err
-                await asyncio.sleep(0.5)
+        session, verify_resp, verify_data = await fetch_1k_with_retry(
+            session, url, verify_params, headers, job=job, max_retries=3
+        )
 
-        if verify_resp is None or verify_resp.status_code != 200:
+        if verify_resp is None or verify_resp.status_code != 200 or verify_data is None:
             code = verify_resp.status_code if verify_resp else "Bilinmiyor"
             if code == 404:
                 raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
             if code == 429:
                 raise Exception("1000Kitap sunucuları geçici olarak istek sınırı uyguladı (HTTP 429). Lütfen 1 dakika bekleyip tekrar deneyin.")
             raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
-
-        verify_data = verify_resp.json()
         if verify_data.get("hata") == 1:
             msg = verify_data.get("hataMesaji") or verify_data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
             raise Exception(f"1000Kitap Bildirimi: {msg}")
@@ -817,45 +918,23 @@ async def scrape_user_books(job: JobState):
                             "kadi": job.username,
                             "raf": shelf_slug,
                             "sayfa": page,
-                            "appVersion": CURRENT_1K_APP_VERSION,
                             "os": "android",
                             "hl": "tr"
                         }
                         if kume:
                             params["kume"] = kume
 
-                        response = None
-                        for retry in range(2):
-                            if job.cancelled:
-                                raise Exception("İşlem kullanıcı tarafından iptal edildi.")
-                            try:
-                                response = await session.get(url, params=params, headers=headers, timeout=6.0)
-                                if response.status_code in (403, 429):
-                                    if retry == 0:
-                                        await asyncio.sleep(1.0)
-                                        try:
-                                            await session.close()
-                                        except Exception:
-                                            pass
-                                        session = cffi_requests.AsyncSession(impersonate="chrome120")
-                                        headers["1-CIHAZ-KODU"] = generate_device_code()
-                                        continue
-                                    break
-                                break
-                            except Exception as net_err:
-                                if retry == 1:
-                                    raise net_err
-                                await asyncio.sleep(0.5)
+                        session, response, data = await fetch_1k_with_retry(
+                            session, url, params, headers, job=job, max_retries=3
+                        )
 
-                        if response is None or response.status_code != 200:
+                        if response is None or response.status_code != 200 or data is None:
                             code = response.status_code if response else "Bilinmiyor"
                             if code == 404:
                                 raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
                             if code == 429:
                                 raise Exception("1000Kitap sunucuları geçici olarak istek sınırı uyguladı (HTTP 429). Lütfen 1 dakika bekleyip tekrar deneyin.")
                             raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
-
-                        data = response.json()
 
                         if data.get("hata") == 1:
                             msg = data.get("hataMesaji") or data.get("alertMesaji") or "1000Kitap okuru bulunamadı."
@@ -997,7 +1076,7 @@ async def scrape_user_books(job: JobState):
                     if not has_more or not raw_list:
                         break
 
-                    await asyncio.sleep(1.30)
+                    await asyncio.sleep(CURRENT_ADAPTIVE_DELAY)
 
             if not collected_books:
                 raise Exception(
@@ -1200,6 +1279,51 @@ async def cleanup_worker():
         if expired or expired_ips:
             gc.collect()
 
+# 1000Kitap API Arka Plan Sağlık Kontrolü (Canary Heartbeat Worker)
+async def canary_healthcheck_worker():
+    """
+    Her 2 dakikada bir 1000Kitap API durumunu ve en güncel sürüm numarasını kontrol eden sessiz bekçi.
+    Aktif bir iş çalışıyorsa fazladan istek atmaz.
+    """
+    global API_HEALTHY
+    while True:
+        try:
+            await asyncio.sleep(120)
+            if CURRENT_RUNNING_JOB_ID and is_job_running_active(CURRENT_RUNNING_JOB_ID):
+                continue
+
+            headers = {
+                "Api-V2": "1",
+                "1-CIHAZ-KODU": generate_device_code(),
+                "User-Agent": f"okur/{CURRENT_1K_APP_VERSION} (Android 14; Mobile)",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+            params = {
+                "kadi": "cengiz",
+                "raf": "okuduklari",
+                "sayfa": 1,
+                "appVersion": CURRENT_1K_APP_VERSION,
+                "os": "android",
+                "hl": "tr"
+            }
+            url = "https://api.1000kitap.com/v2/uyeler/kitaplar/liste"
+            async with cffi_requests.AsyncSession(impersonate="chrome120") as s:
+                resp = await s.get(url, params=params, headers=headers, timeout=6.0)
+                if resp.status_code == 200:
+                    API_HEALTHY = True
+                    try:
+                        data = resp.json()
+                        sync_1k_version(data)
+                    except Exception:
+                        pass
+                elif resp.status_code in (403, 429):
+                    API_HEALTHY = False
+                    adapt_congestion(slow_down=True)
+                    logger.warning(f"[Canary] 1000Kitap API uyarısı: HTTP {resp.status_code}")
+        except Exception:
+            pass
+
 # ==============================================================================
 # 6. FASTAPI UYGULAMASI VE ENDPOINT'LER
 # ==============================================================================
@@ -1209,10 +1333,12 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(queue_worker())
     cleanup_task = asyncio.create_task(cleanup_worker())
+    canary_task = asyncio.create_task(canary_healthcheck_worker())
     logger.info("1000Kitap to Goodreads Aktarıcı başlatıldı. Kuyruk motoru hazır.")
     yield
     worker_task.cancel()
     cleanup_task.cancel()
+    canary_task.cancel()
 
 app = FastAPI(
     title="1000Kitap to Goodreads Exporter",
