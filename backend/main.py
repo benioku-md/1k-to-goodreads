@@ -53,9 +53,9 @@ GOODREADS_CSV_HEADERS = [
 ]
 
 CURRENT_1K_APP_VERSION = "4.58.745"
-MIN_PAGE_DELAY = 1.30  # Temel bekleme süresi (+0.4s eklenmiş güvenli taban)
+MIN_PAGE_DELAY = 1.15  # Temel bekleme süresi (+0.25s eklenmiş güvenli taban)
 MAX_PAGE_DELAY = 2.80  # Yoğunluk anında çıkılabilecek en güvenli tavan
-CURRENT_ADAPTIVE_DELAY = 1.30
+CURRENT_ADAPTIVE_DELAY = 1.15
 CONSECUTIVE_SUCCESS_COUNT = 0
 API_HEALTHY = True
 
@@ -93,7 +93,7 @@ class JobState:
         else:
             people_ahead = 0
             rem = max(0, self.total_count - self.current_count) if self.total_count > 0 else 50
-            estimated_seconds = max(1, math.ceil(rem / 6) + 1)
+            estimated_seconds = max(1, math.ceil(rem / 7) + 1)
 
         return {
             "job_id": self.job_id,
@@ -147,7 +147,7 @@ def is_job_running_active(job_id_to_check: Optional[str], exclude_job_id: Option
 def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
     """
     Kuyruktaki belirli bir iş için (position, people_ahead, estimated_seconds) hesaplar.
-    - 1. aktif çalışan işin canlı kalan süresini alır: (total - current) / 6 sn
+    - 1. aktif çalışan işin canlı kalan süresini alır: (total - current) / 7 sn
     - Önündeki her bekleyen kullanıcı için hesaplanan tahmini süreyi zincirleme ekler.
     """
     running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, job_id)
@@ -157,9 +157,9 @@ def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
         if active_job:
             if active_job.total_count > 0:
                 rem = max(0, active_job.total_count - active_job.current_count)
-                active_remaining_sec = max(2, math.ceil(rem / 6) + 2)
+                active_remaining_sec = max(2, math.ceil(rem / 7) + 2)
             else:
-                active_remaining_sec = 35
+                active_remaining_sec = 28
 
     if job_id not in ACTIVE_QUEUE_LIST:
         people_ahead = 1 if running_active else 0
@@ -175,9 +175,9 @@ def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
         ahead_id = ACTIVE_QUEUE_LIST[i]
         ahead_job = JOBS.get(ahead_id)
         if ahead_job and ahead_job.total_count > 0:
-            est_ahead = max(5, math.ceil(ahead_job.total_count / 6) + 4)
+            est_ahead = max(5, math.ceil(ahead_job.total_count / 7) + 3)
         else:
-            est_ahead = 30
+            est_ahead = 28
         accumulated_sec += est_ahead
 
     total_wait_sec = max(2, accumulated_sec) if people_ahead > 0 else 2
@@ -655,7 +655,7 @@ async def fetch_user_reviews(session, username: str, headers: dict, job: Optiona
             has_more = bool(sonuc.get("hasMore", False))
             page += 1
             if has_more:
-                review_delay = max(0.70, CURRENT_ADAPTIVE_DELAY * 0.55)
+                review_delay = max(0.55, CURRENT_ADAPTIVE_DELAY * 0.50)
                 await asyncio.sleep(review_delay)
         except Exception:
             break
@@ -803,7 +803,7 @@ async def scrape_user_books(job: JobState):
                     job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != raw_title][:4]
 
                 rem_target = max(0, target_total - resolved_count)
-                eta_sec = max(1, math.ceil(rem_target / 6) + 1)
+                eta_sec = max(1, math.ceil(rem_target / 7) + 1)
 
                 await job.broadcast({
                     "type": "progress",
@@ -1049,7 +1049,7 @@ async def scrape_user_books(job: JobState):
 
                     job.message = f"{shelf_display} taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
                     rem_scrape = max(0, (job.total_count or len(collected_books)) - job.current_count)
-                    eta_scrape = max(1, math.ceil(rem_scrape / 6) + 1)
+                    eta_scrape = max(1, math.ceil(rem_scrape / 7) + 1)
 
                     shelf_status = "scraping_read" if goodreads_shelf == "read" else ("scraping_to_read" if goodreads_shelf == "to-read" else "scraping_currently_reading")
                     await job.broadcast({

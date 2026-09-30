@@ -512,7 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pos > 1 || peopleAhead > 0) {
       const count = peopleAhead > 0 ? peopleAhead : (pos - 1);
       queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${count} kişi var)...`;
-      const waitSec = jobData.estimated_seconds || (count * 35);
+      const waitSec = jobData.estimated_seconds || (count * 28);
       updateEtaDisplay(waitSec, 'queued', true);
     } else {
       queueInfoText.textContent = `Sıranız: #1 (Aktarım başlatılıyor)...`;
@@ -616,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pos > 1 || peopleAhead > 0) {
         const count = peopleAhead > 0 ? peopleAhead : (pos - 1);
         queueInfoText.textContent = `Kuyruktasınız (Önünüzde ${count} kişi var)...`;
-        const waitSec = data.estimated_seconds || (count * 35);
+        const waitSec = data.estimated_seconds || (count * 28);
         updateEtaDisplay(waitSec, 'queued', true);
       } else {
         queueInfoText.textContent = `Sıranız: #1 (Aktarım başlatılıyor)...`;
@@ -676,14 +676,14 @@ document.addEventListener('DOMContentLoaded', () => {
       progressBar.style.width = `${barWidth}%`;
       progressBar.setAttribute('aria-valuenow', String(percent));
 
-      // Dinamik Kalan Süre (ETA): Backend gönderirse kullan, göndermezse kitap sayısından 6 kitap/sn ile hesapla
+      // Dinamik Kalan Süre (ETA): Backend gönderirse kullan, göndermezse kitap sayısından 7 kitap/sn ile hesapla
       let etaSec = data.estimated_seconds;
       if (!etaSec || etaSec <= 0) {
         if (total > 0 && current >= 0) {
           const rem = Math.max(0, total - current);
-          etaSec = Math.ceil(rem / 6) + 1;
+          etaSec = Math.ceil(rem / 7) + 1;
         } else {
-          etaSec = 20;
+          etaSec = 18;
         }
       }
       updateEtaDisplay(etaSec, data.status || 'scraping', false);
