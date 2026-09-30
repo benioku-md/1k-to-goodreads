@@ -52,6 +52,8 @@ GOODREADS_CSV_HEADERS = [
     "Title", "Author", "ISBN", "My Rating", "Date Read", "Bookshelves", "Exclusive Shelf", "Read Count", "My Review"
 ]
 
+CURRENT_1K_APP_VERSION = "4.58.744"
+
 class ExportRequest(BaseModel):
     username: str
     shelf: Optional[str] = "hepsi"
@@ -477,7 +479,7 @@ async def fetch_user_reviews(session, username: str, headers: dict) -> Tuple[Dic
             "id": username,
             "bolum": "incelemeler",
             "sayfa": page,
-            "appVersion": "2.60.60",
+            "appVersion": CURRENT_1K_APP_VERSION,
             "os": "android",
             "hl": "tr"
         }
@@ -533,7 +535,7 @@ async def scrape_user_books(job: JobState):
     headers = {
         "Api-V2": "1",
         "1-CIHAZ-KODU": device_code,
-        "User-Agent": "okur/2.60.60 (Android 14; Mobile)",
+        "User-Agent": f"okur/{CURRENT_1K_APP_VERSION} (Android 14; Mobile)",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
     }
@@ -715,7 +717,7 @@ async def scrape_user_books(job: JobState):
             "kadi": job.username,
             "raf": "okuduklari",
             "sayfa": 1,
-            "appVersion": "2.60.60",
+            "appVersion": CURRENT_1K_APP_VERSION,
             "os": "android",
             "hl": "tr"
         }
@@ -747,6 +749,8 @@ async def scrape_user_books(job: JobState):
             code = verify_resp.status_code if verify_resp else "Bilinmiyor"
             if code == 404:
                 raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+            if code == 429:
+                raise Exception("1000Kitap sunucuları geçici olarak istek sınırı uyguladı (HTTP 429). Lütfen 1 dakika bekleyip tekrar deneyin.")
             raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
         verify_data = verify_resp.json()
@@ -803,7 +807,7 @@ async def scrape_user_books(job: JobState):
                             "kadi": job.username,
                             "raf": shelf_slug,
                             "sayfa": page,
-                            "appVersion": "2.60.60",
+                            "appVersion": CURRENT_1K_APP_VERSION,
                             "os": "android",
                             "hl": "tr"
                         }
@@ -837,6 +841,8 @@ async def scrape_user_books(job: JobState):
                             code = response.status_code if response else "Bilinmiyor"
                             if code == 404:
                                 raise Exception("Kullanıcı bulunamadı. Lütfen kullanıcı adını kontrol edin.")
+                            if code == 429:
+                                raise Exception("1000Kitap sunucuları geçici olarak istek sınırı uyguladı (HTTP 429). Lütfen 1 dakika bekleyip tekrar deneyin.")
                             raise Exception(f"1000Kitap API bağlantı hatası (HTTP {code})")
 
                         data = response.json()
