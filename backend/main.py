@@ -88,7 +88,7 @@ class JobState:
         else:
             people_ahead = 0
             rem = max(0, self.total_count - self.current_count) if self.total_count > 0 else 50
-            estimated_seconds = max(1, math.ceil(rem / 9) + 1)
+            estimated_seconds = max(1, math.ceil(rem / 6) + 1)
 
         return {
             "job_id": self.job_id,
@@ -142,7 +142,7 @@ def is_job_running_active(job_id_to_check: Optional[str], exclude_job_id: Option
 def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
     """
     Kuyruktaki belirli bir iş için (position, people_ahead, estimated_seconds) hesaplar.
-    - 1. aktif çalışan işin canlı kalan süresini alır: (total - current) / 9 sn
+    - 1. aktif çalışan işin canlı kalan süresini alır: (total - current) / 6 sn
     - Önündeki her bekleyen kullanıcı için hesaplanan tahmini süreyi zincirleme ekler.
     """
     running_active = is_job_running_active(CURRENT_RUNNING_JOB_ID, job_id)
@@ -152,9 +152,9 @@ def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
         if active_job:
             if active_job.total_count > 0:
                 rem = max(0, active_job.total_count - active_job.current_count)
-                active_remaining_sec = max(2, math.ceil(rem / 9) + 1)
+                active_remaining_sec = max(2, math.ceil(rem / 6) + 2)
             else:
-                active_remaining_sec = 25
+                active_remaining_sec = 35
 
     if job_id not in ACTIVE_QUEUE_LIST:
         people_ahead = 1 if running_active else 0
@@ -170,9 +170,9 @@ def calculate_queue_eta(job_id: str) -> Tuple[int, int, int]:
         ahead_id = ACTIVE_QUEUE_LIST[i]
         ahead_job = JOBS.get(ahead_id)
         if ahead_job and ahead_job.total_count > 0:
-            est_ahead = max(5, math.ceil(ahead_job.total_count / 9) + 3)
+            est_ahead = max(5, math.ceil(ahead_job.total_count / 6) + 4)
         else:
-            est_ahead = 22
+            est_ahead = 30
         accumulated_sec += est_ahead
 
     total_wait_sec = max(2, accumulated_sec) if people_ahead > 0 else 2
@@ -462,7 +462,7 @@ def clean_review_text(yorum_data: dict) -> str:
     raw = yorum_data.get("metin") or yorum_data.get("icerik") or ""
     return str(raw).strip()[:20000]
 
-async def fetch_user_reviews(session, username: str, headers: dict) -> Tuple[Dict[str, str], Dict[str, str]]:
+async def fetch_user_reviews(session, username: str, headers: dict, job: Optional[JobState] = None) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
     1000Kitap mobil API'sinden kullanıcının yazdığı tüm incelemeleri çeker.
     Dönen yapıyı (reviews_by_book_id, reviews_by_book_title) olarak döndürür.
@@ -475,6 +475,8 @@ async def fetch_user_reviews(session, username: str, headers: dict) -> Tuple[Dic
     max_pages = 50
 
     while has_more and page <= max_pages:
+        if job and job.cancelled:
+            break
         params = {
             "id": username,
             "bolum": "incelemeler",
@@ -516,10 +518,22 @@ async def fetch_user_reviews(session, username: str, headers: dict) -> Tuple[Dic
                 if kitap_adi_clean:
                     reviews_by_title[kitap_adi_clean] = review_text
 
+            if job:
+                job.message = f"Kitap incelemeleri alınıyor: {len(reviews_by_id)} inceleme eşlendi (Sayfa {page})..."
+                await job.broadcast({
+                    "type": "progress",
+                    "status": "fetching_reviews",
+                    "message": job.message,
+                    "current": job.current_count,
+                    "total": job.total_count,
+                    "percent": job.percent,
+                    "estimated_seconds": max(1, 4 - page)
+                })
+
             has_more = bool(sonuc.get("hasMore", False))
             page += 1
             if has_more:
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.70)
         except Exception:
             break
 
@@ -667,7 +681,7 @@ async def scrape_user_books(job: JobState):
                     job.recent_books = [recent_entry] + [b for b in job.recent_books if b.get("title") != raw_title][:4]
 
                 rem_target = max(0, target_total - resolved_count)
-                eta_sec = max(1, math.ceil(rem_target / 9) + 1)
+                eta_sec = max(1, math.ceil(rem_target / 6) + 1)
 
                 await job.broadcast({
                     "type": "progress",
@@ -778,11 +792,7 @@ async def scrape_user_books(job: JobState):
             else:
                 raise Exception(f"1000Kitap Bildirimi: {verify_hata}")
 
-        # Kütüphane doğrulandıktan sonra inceleme ve ISBN işçilerini başlat
-        review_task = None
-        if job.include_reviews:
-            review_task = asyncio.create_task(fetch_user_reviews(session, job.username, headers))
-
+        # İncelemeler artık paralel çekilmiyor, kitap taraması bittikten sonra sırayla çekilecek!
         cached_first_page_sonuc = verify_sonuc
 
         ky_limits = httpx.Limits(max_keepalive_connections=35, max_connections=50)
@@ -961,7 +971,7 @@ async def scrape_user_books(job: JobState):
 
                     job.message = f"{shelf_display} taranıyor: {job.current_count} / {job.total_count if job.total_count > 0 else '?'} (%{job.percent})..."
                     rem_scrape = max(0, (job.total_count or len(collected_books)) - job.current_count)
-                    eta_scrape = max(1, math.ceil(rem_scrape / 9) + 1)
+                    eta_scrape = max(1, math.ceil(rem_scrape / 6) + 1)
 
                     shelf_status = "scraping_read" if goodreads_shelf == "read" else ("scraping_to_read" if goodreads_shelf == "to-read" else "scraping_currently_reading")
                     await job.broadcast({
@@ -987,7 +997,7 @@ async def scrape_user_books(job: JobState):
                     if not has_more or not raw_list:
                         break
 
-                    await asyncio.sleep(0.90)
+                    await asyncio.sleep(1.30)
 
             if not collected_books:
                 raise Exception(
@@ -1003,10 +1013,10 @@ async def scrape_user_books(job: JobState):
                 await isbn_queue.put(None)
             await asyncio.gather(*ky_workers)
 
-        # İncelemeleri bekle ve kitaplarla eşle
-        if job.include_reviews and review_task:
+        # İncelemeleri en sonda sıralı olarak çek ve kitaplarla eşle
+        if job.include_reviews:
             job.status = "fetching_reviews"
-            job.message = "Kitap incelemeleri alınıyor ve eşleniyor..."
+            job.message = "Kitap incelemeleri taranıyor ve eşleniyor..."
             await job.broadcast({
                 "type": "progress",
                 "status": "fetching_reviews",
@@ -1014,12 +1024,12 @@ async def scrape_user_books(job: JobState):
                 "current": job.current_count,
                 "total": job.total_count,
                 "percent": job.percent,
-                "estimated_seconds": 2
+                "estimated_seconds": 4
             })
             if ACTIVE_QUEUE_LIST:
                 asyncio.create_task(sync_queue_eta_broadcast())
             try:
-                reviews_by_id, reviews_by_title = await review_task
+                reviews_by_id, reviews_by_title = await fetch_user_reviews(session, job.username, headers, job)
                 for b in collected_books:
                     b_id = str(b.get("id") or "")
                     b_title = re.sub(r'\s+', ' ', b.get("title", "").lower().strip())
