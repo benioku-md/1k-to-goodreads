@@ -12,7 +12,7 @@ import string
 import time
 import uuid
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime, timedelta
 
 import httpx
@@ -327,11 +327,11 @@ def parse_read_count(item: dict, ek_bilgi: str) -> int:
             return int(m.group(1))
     return 1
 
-def parse_rating(ek_bilgi: str) -> int:
+def parse_rating(ek_bilgi: str) -> Union[int, float]:
     """
-    1000Kitap ekBilgi alanındaki 10'luk puanı Goodreads 1-5 tamsayı puanına çevirir.
-    Formül: math.ceil(puan10 / 2) -> (10->5, 9->5, 8->4, 7->4, 6->3, 5->3, 4->2, 3->2, 2->1, 1->1).
-    Puan verilmemişse 0 döner.
+    1000Kitap ekBilgi alanındaki 10'luk puanı Goodreads'in yeni buçuklu/ondalıklı yıldız sistemine çevirir.
+    Formül: puan10 / 2.0 -> (10->5, 9->4.5, 8->4, 7->3.5, 6->3, 5->2.5, 4->2, 3->1.5, 2->1, 1->0.5).
+    Tam sayılar int (5, 4), buçuklular float (4.5, 3.5), puan verilmemişse 0 döner.
     """
     if not ek_bilgi or "puan vermedi" in ek_bilgi.lower():
         return 0
@@ -339,8 +339,11 @@ def parse_rating(ek_bilgi: str) -> int:
     if match:
         try:
             puan_10 = float(match.group(1))
-            goodreads_val = math.ceil(puan_10 / 2.0)
-            return max(1, min(5, goodreads_val))
+            goodreads_val = round(puan_10 / 2.0, 2)
+            goodreads_val = max(0.0, min(5.0, goodreads_val))
+            if goodreads_val.is_integer():
+                return int(goodreads_val)
+            return goodreads_val
         except Exception:
             return 0
     return 0

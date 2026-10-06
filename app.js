@@ -956,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const author = authorIdx !== -1 ? cols[authorIdx] : cols[1];
                 let isbn = isbnIdx !== -1 ? cols[isbnIdx] : '';
                 isbn = isbn.replace(/^[="]+|["]+$/g, '');
-                const rating = ratingIdx !== -1 ? parseInt(cols[ratingIdx], 10) || 0 : 0;
+                const rating = ratingIdx !== -1 ? parseFloat(cols[ratingIdx]) || 0 : 0;
                 const rawShelf = shelfIdx !== -1 ? cols[shelfIdx] : 'read';
                 const shelf = rawShelf === 'read' ? 'Okundu' : (rawShelf === 'to-read' ? 'Okunacak' : 'Şu An Okunuyor');
 

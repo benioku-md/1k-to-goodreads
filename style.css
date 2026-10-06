@@ -1555,8 +1555,8 @@ body {
 }
 
 .rating-matrix {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 6px;
 }
 
@@ -1567,17 +1567,17 @@ body {
   background: #FFF;
   border: 1px solid rgba(45, 35, 30, 0.18);
   border-radius: 4px;
-  padding: 6px 12px;
+  padding: 5px 8px;
   color: var(--ink-espresso);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
 }
 
 .rating-range {
   display: inline-block;
-  min-width: 42px;
+  min-width: 20px;
   color: var(--ink-espresso);
   font-weight: 700;
   font-size: 0.77rem; /* +1.5px dengelendi */
@@ -1591,8 +1591,9 @@ body {
 .rating-stars {
   display: inline-flex;
   align-items: center;
-  letter-spacing: 2px;
-  font-family: initial;
+  gap: 2px;
+  color: #E5A93C;
+  font-size: 0.68rem;
 }
 
 .rating-score {
