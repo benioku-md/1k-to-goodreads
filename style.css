@@ -1556,7 +1556,9 @@ body {
 
 .rating-matrix {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(5, auto);
+  grid-auto-flow: column;
   gap: 6px;
 }
 
@@ -1565,41 +1567,47 @@ body {
   font-size: 0.68rem;
   font-weight: 600;
   background: #FFF;
-  border: 1px solid rgba(45, 35, 30, 0.18);
+  border: 1px solid rgba(45, 35, 30, 0.16);
   border-radius: 4px;
   padding: 5px 8px;
   color: var(--ink-espresso);
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .rating-range {
-  display: inline-block;
-  min-width: 20px;
   color: var(--ink-espresso);
   font-weight: 700;
-  font-size: 0.77rem; /* +1.5px dengelendi */
+  font-size: 0.74rem;
 }
 
 .rating-arrow {
   color: var(--accent-terracotta);
-  font-size: 0.85em;
+  font-size: 0.80em;
+  padding: 0 4px;
 }
 
-.rating-stars {
+.rating-target {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  color: #E5A93C;
-  font-size: 0.68rem;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .rating-score {
-  margin-left: auto;
-  color: var(--ink-muted);
-  font-size: 0.9em;
+  color: var(--ink-espresso);
+  font-weight: 700;
+  font-size: 0.76rem;
+}
+
+.rating-star {
+  color: #E5A93C;
+  font-size: 0.70rem;
 }
 
 /* Gizlilik Listesi */
